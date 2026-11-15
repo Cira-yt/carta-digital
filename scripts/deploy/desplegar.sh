@@ -558,12 +558,26 @@ cmd_cloudflare_auto() {
   }
   ok "Worker publicado: $CF_WORKER_NAME (origen: http://$dns)"
 
-  curl -sS -X PUT "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${CF_WORKER_NAME}/subdomain" \
+  # Nota: este endpoint (activar la ruta *.workers.dev de UN worker puntual)
+  # rechaza la autenticación por API Token con el error 10405 "Method not
+  # allowed for this authentication scheme" — es una limitación conocida de
+  # Cloudflare, no un bug del script. Si falla, el Worker ya quedó publicado
+  # igual; solo falta activar la ruta una vez a mano (después queda prendida
+  # para siempre, no hay que repetirlo).
+  local resp_subdominio
+  resp_subdominio=$(curl -sS -X PUT "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${CF_WORKER_NAME}/subdomain" \
     -H "Authorization: Bearer ${CF_API_TOKEN}" -H "Content-Type: application/json" \
-    --data '{"enabled":true,"previews_enabled":false}' >/dev/null
+    --data '{"enabled":true,"previews_enabled":false}')
 
-  ok "URL pública: https://${CF_WORKER_NAME}.${CF_SUBDOMAIN}.workers.dev"
-  aviso "Puede tardar ~30-60s en quedar activo la primera vez."
+  if echo "$resp_subdominio" | jq -e '.success == true' >/dev/null 2>&1; then
+    ok "URL pública: https://${CF_WORKER_NAME}.${CF_SUBDOMAIN}.workers.dev"
+    aviso "Puede tardar ~30-60s en quedar activo la primera vez."
+  else
+    aviso "No se pudo activar la ruta *.workers.dev por API: $(echo "$resp_subdominio" | jq -r '.errors[0].message // "error desconocido"')"
+    aviso "Esto es normal con API Token (Cloudflare lo bloquea). Actívala una sola vez a mano:"
+    aviso "  dash.cloudflare.com → Workers & Pages → $CF_WORKER_NAME → Settings → Domains & Routes → activar *.workers.dev"
+    aviso "Después de activarla, la URL será: https://${CF_WORKER_NAME}.${CF_SUBDOMAIN}.workers.dev"
+  fi
 }
 
 cmd_cloudflare() {
