@@ -680,17 +680,28 @@ cmd_destruir() {
   if [ -n "${CF_API_TOKEN:-}" ] && [ -n "${CF_ACCOUNT_ID:-}" ]; then
     paso "Cloudflare — Worker '$CF_WORKER_NAME' y KV namespace"
     if command -v jq >/dev/null; then
-      cf_api DELETE "/accounts/${CF_ACCOUNT_ID}/workers/scripts/${CF_WORKER_NAME}" >/dev/null 2>&1 \
-        && ok "Worker borrado: $CF_WORKER_NAME" \
-        || aviso "Worker '$CF_WORKER_NAME' no existía o no se pudo borrar (puede que ya estuviera borrado)."
+      # cf_api usa curl -sS: el código de salida de curl indica si pudo
+      # CONECTARSE, no si Cloudflare respondió éxito. Por eso se revisa
+      # el campo "success" del JSON, igual que en cmd_cloudflare_auto.
+      local resp_borrado
+      resp_borrado=$(cf_api DELETE "/accounts/${CF_ACCOUNT_ID}/workers/scripts/${CF_WORKER_NAME}")
+      if echo "$resp_borrado" | jq -e '.success == true' >/dev/null 2>&1; then
+        ok "Worker borrado: $CF_WORKER_NAME"
+      else
+        aviso "Worker '$CF_WORKER_NAME' no se pudo borrar: $(echo "$resp_borrado" | jq -r '.errors[0].message // "ya no existía o error desconocido"')"
+      fi
       local nombre_kv kv_id
       nombre_kv="${NAME_PREFIX}-rate-limit"
       kv_id=$(cf_api GET "/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces?per_page=100" \
         | jq -r --arg t "$nombre_kv" '.result[]? | select(.title==$t) | .id' | head -n1)
       if [ -n "$kv_id" ]; then
-        cf_api DELETE "/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces/${kv_id}" >/dev/null 2>&1 \
-          && ok "KV namespace borrado: $nombre_kv" \
-          || aviso "No se pudo borrar el KV namespace '$nombre_kv'."
+        local resp_kv_borrado
+        resp_kv_borrado=$(cf_api DELETE "/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces/${kv_id}")
+        if echo "$resp_kv_borrado" | jq -e '.success == true' >/dev/null 2>&1; then
+          ok "KV namespace borrado: $nombre_kv"
+        else
+          aviso "No se pudo borrar el KV namespace '$nombre_kv': $(echo "$resp_kv_borrado" | jq -r '.errors[0].message // "error desconocido"')"
+        fi
       fi
     else
       aviso "Falta 'jq': no puedo borrar el Worker/KV de Cloudflare por API. Bórralos a mano en dash.cloudflare.com."
