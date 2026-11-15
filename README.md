@@ -26,8 +26,7 @@ Proyecto construido con **seguridad desde el diseño**: incorpora las correccion
 8. [Pruebas](#pruebas)
 9. [Seguridad implementada](#seguridad-implementada)
 10. [API](#api)
-11. [Credenciales de prueba](#credenciales-de-prueba)
-12. [Documentación](#documentación)
+11. [Documentación](#documentación)
 
 ---
 
@@ -156,11 +155,11 @@ bash scripts/deploy/desplegar.sh            # verificar → docker → red → R
 | `verificar` | Herramientas, sesión de AWS, variables y rama de Git |
 | `docker` | Construye la imagen y la prueba con un Postgres temporal |
 | `red` / `base-datos` / `app` | Security groups · RDS · Load Balancer + Auto Scaling |
-| `cloudflare` | Imprime los pasos manuales de DNS/HTTPS con los datos reales |
+| `cloudflare` | Automatiza Cloudflare por API (Worker + KV + subdominio) si `CF_API_TOKEN`/`CF_ACCOUNT_ID`/`CF_SUBDOMAIN` están completos en `deploy.env`; si no, imprime los pasos manuales de DNS/HTTPS |
 | `estado` | Estado de RDS, Auto Scaling y salud en el Load Balancer |
 | `destruir` | Borra todo lo creado (pide confirmación) |
 
-> **Credenciales:** el script usa la sesión de la AWS CLI (**AWS CloudShell** o `aws configure`). Las contraseñas de la app van en `scripts/deploy/deploy.env`, que **no se sube al repo**. Cloudflare se configura a mano en el dashboard.
+> **Credenciales:** el script usa la sesión de la AWS CLI (**AWS CloudShell** o `aws configure`). Las contraseñas de la app van en `scripts/deploy/deploy.env`, que **no se sube al repo**. Cloudflare se configura solo (sin dominio propio) con `CF_API_TOKEN`/`CF_ACCOUNT_ID`/`CF_SUBDOMAIN`, o a mano en el dashboard si preferís dominio propio.
 > Guía completa: [`docs/despliegue-automatico.md`](docs/despliegue-automatico.md).
 
 ## CI/CD
@@ -222,10 +221,6 @@ Más detalle: [`docs/OWASP.md`](docs/OWASP.md).
 | GET | `/health` | Salud del servicio |
 
 El panel `/admin` incluye dashboard, cartas/categorías/productos, restaurantes, ventas, 2FA y un resumen OWASP.
-
-## Credenciales de prueba
-
-Los datos de ejemplo (`db/init.sql`) crean un usuario `admin` y un usuario `cliente` con contraseña hasheada (bcrypt). **No se publican las contraseñas aquí** porque este repositorio es público. Si necesitas una cuenta de prueba, genera tu propio hash (`bcryptjs.hashSync("tu-contraseña", 12)`) y reemplázalo en `db/init.sql` antes de desplegar. **Si ya desplegaste con alguna contraseña de ejemplo conocida, cámbiala antes de dejar el entorno expuesto a internet.**
 
 ## Documentación
 
