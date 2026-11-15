@@ -69,7 +69,7 @@ Al final imprime la URL `http://<alb>.elb.amazonaws.com` y los pasos de Cloudfla
 
 **Volver a desplegar** (después de otro `git push` a la rama): `bash scripts/deploy/desplegar.sh app` — crea una versión nueva del Launch Template y reemplaza las instancias de a una (*instance refresh*), sin cortar el servicio.
 
-**Apagar todo** para no gastar créditos: `bash scripts/deploy/desplegar.sh destruir` (pide escribir el prefijo para confirmar; borra también la base RDS).
+**Apagar todo** para no gastar créditos: `bash scripts/deploy/desplegar.sh destruir` (pide escribir el prefijo para confirmar; borra también la base RDS). Si `CF_API_TOKEN`/`CF_ACCOUNT_ID` están configurados en `deploy.env`, el mismo comando borra además el Worker y el KV namespace de Cloudflare — un solo comando apaga AWS y Cloudflare juntos.
 
 > **Instalación separada:** la plantilla viene con `NAME_PREFIX=carta-v2` y `RDS_INSTANCE_ID=carta-v2-db`, así el script crea todo nuevo (`carta-v2-alb`, `carta-v2-asg`, `carta-v2-db`…) sin tocar la instalación anterior `carta-digital-*`. `destruir` también borra solo lo que tenga el prefijo `carta-v2`.
 
