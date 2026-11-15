@@ -19,13 +19,18 @@ Usuario → Cloudflare Worker (*.workers.dev, WAF/rate-limit) → ALB (AWS) → 
 
 Todo se levanta con un solo script idempotente: `scripts/deploy/desplegar.sh` (subcomandos: `rds`, `app`, `cloudflare`, `verificar`, `destruir`, `todo`).
 
-## 3. Estado actual (15 nov 2026, ~13:00 hrs Chile)
+## 3. Estado actual (15 nov 2026, ~14:05 hrs Chile)
 
-- RDS: creada y disponible.
-- Target Group `carta-v2-tg`, ALB `carta-v2-alb` (6 subnets, sin el bug de AZ) y su listener HTTP:80: creados, todo sano.
-- Auto Scaling Group (min 1 / deseadas 1 / max 1): **sano**. App funcionando directo en `http://carta-v2-alb-1094498464.us-east-1.elb.amazonaws.com`.
-- Cloudflare: el Worker `carta-v2-proxy` se publicó bien por API (código + KV namespace `carta-v2-rate-limit`), pero la URL pública `https://carta-v2-proxy.carlos0tapi.workers.dev` muestra "There is nothing here yet". Causa confirmada: el endpoint que activa la ruta `*.workers.dev` de un Worker puntual **rechaza la autenticación por API Token** (error `10405 Method not allowed for this authentication scheme`) — es una limitación real de Cloudflare, no un bug nuestro. El script ya se actualizó para detectar esto y avisar con instrucciones; el paso de activar la ruta hay que hacerlo **una sola vez, a mano**, en dash.cloudflare.com → Workers & Pages → `carta-v2-proxy` → Settings → Domains & Routes. Después de ese clic único queda prendido para siempre.
-- Variables de Cloudflare ya configuradas en `deploy.env` (valores no se publican aquí porque el repo es público): `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `CF_SUBDOMAIN` (`carlos0tapi`, que de todas formas queda visible en la URL pública del Worker).
+**El ciclo completo (crear → probar → destruir) ya se probó de punta a punta y funciona.** En este momento el entorno está **destruido por completo** (AWS y Cloudflare) después de una prueba — no hay nada corriendo ni generando costo. Para la entrega/demo, hay que volver a crearlo con el comando de "Próximos pasos" más abajo.
+
+Lo que se validó en la prueba:
+- RDS, Target Group, ALB (6 subnets) + listener, Launch Template y Auto Scaling Group: todo se creó sano con un solo comando.
+- La ruta `*.workers.dev` del Worker se activó a mano una vez en el dashboard de Cloudflare (ver problema de abajo) y la app cargó bien a través de `https://carta-v2-proxy.carlos0tapi.workers.dev`.
+- Se cambió la contraseña real del admin en la base (bcrypt + `UPDATE`), ya que había quedado expuesta en commits anteriores del repo público.
+- Se corrigió un bug real de seguridad: faltaba `app.set("trust proxy", 1)` en `app.ts`, lo que hacía que el rate-limit de login (5 intentos/15 min) agrupara a **todos** los usuarios bajo la misma IP aparente (la del ALB) — cualquiera se bloqueaba a todos. Ya está resuelto y desplegado.
+- `bash scripts/deploy/desplegar.sh destruir` ahora borra AWS **y** el Worker + KV namespace de Cloudflare en un solo comando (antes solo tocaba AWS).
+
+Variables de Cloudflare configuradas en `deploy.env` (valores no se publican aquí porque el repo es público): `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `CF_SUBDOMAIN` (`carlos0tapi`, que de todas formas queda visible en la URL pública del Worker).
 
 ## 4. Problemas encontrados y cómo se resolvieron
 
@@ -37,14 +42,21 @@ Todo se levanta con un solo script idempotente: `scripts/deploy/desplegar.sh` (s
 | El script muere en silencio justo en "Target Group" o "Application Load Balancer", sin mensaje de error, varias veces seguidas | Muy probablemente CloudShell recicla el proceso en primer plano tras un rato de inactividad del teclado (no es un bug del script; `tmux new` no ayuda porque CloudShell ya corre todo dentro de su propio tmux) | Mitigación: crear manualmente el recurso que se cortó (Target Group, luego ALB, luego listener) y retomar el script — es idempotente, detecta lo ya creado y sigue |
 | `gh pr list` falla ("GraphQL no disponible") | Restricción del entorno de Claude Code | Usar `gh api repos/{owner}/{repo}/pulls?head=...` (REST) en vez de GraphQL |
 | No se puede hacer `PATCH` directo a `refs/heads/main` por la API de GitHub | El proxy de este entorno bloquea esa escritura | `git fetch` + `git merge --ff-only` + `git push origin main` en local |
-| Worker de Cloudflare publicado pero la URL `*.workers.dev` muestra "There is nothing here yet" | El endpoint que activa la ruta `*.workers.dev` de un Worker (`PUT /accounts/{id}/workers/scripts/{name}/subdomain`) no acepta API Token, solo el método de auth antiguo (`10405 Method not allowed for this authentication scheme`) | Activar la ruta una sola vez a mano en el dashboard (Workers & Pages → el worker → Settings → Domains & Routes); el script ahora detecta el fallo y lo avisa con instrucciones en vez de asumir éxito |
+| Worker de Cloudflare publicado pero la URL `*.workers.dev` muestra "There is nothing here yet" | El endpoint que activa la ruta `*.workers.dev` de un Worker (`PUT /accounts/{id}/workers/scripts/{name}/subdomain`) no acepta API Token, solo el método de auth antiguo (`10405 Method not allowed for this authentication scheme`) | Activar la ruta una sola vez a mano en el dashboard (Workers & Pages → el worker → Settings → Domains & Routes); el script ahora detecta el fallo y lo avisa con instrucciones en vez de asumir éxito. Es un paso único: una vez activada queda prendida para siempre, no hay que repetirlo en futuros despliegues |
+| El rate-limit de login (5 intentos/15 min) bloqueaba a todos los usuarios con solo un par de intentos de cualquiera | Faltaba `app.set("trust proxy", 1)`: detrás del ALB/Cloudflare, Express veía la IP del ALB en vez de la real del cliente, así que el contador se compartía entre todos | Se agregó esa línea en `app.ts` (PR #6). Ya estaba documentado como riesgo aceptado en el informe OWASP; ahora queda resuelto |
+| `destruir` corría pero el Worker de Cloudflare seguía existiendo después | El `DELETE` a la API de Cloudflare usaba el código de salida de `curl` (que es 0 con cualquier respuesta HTTP, éxito o error) en vez de revisar el campo `success` del JSON — podía reportar "✔ borrado" sin haber borrado nada | Se corrigió para que revise `success` en la respuesta real (PR #8), igual que el resto de las llamadas a Cloudflare. Verificado borrando Worker y KV namespace con éxito tras el fix |
 
-## 5. Próximos pasos
+## 5. Próximos pasos (para la entrega/demo)
 
-1. Activar a mano, una sola vez, la ruta `*.workers.dev` del worker `carta-v2-proxy` en el dashboard de Cloudflare.
-2. Confirmar que `https://carta-v2-proxy.carlos0tapi.workers.dev` cargue la app a través del proxy.
-3. Una vez probado y con evidencia, correr `bash scripts/deploy/desplegar.sh destruir` para no seguir gastando horas del laboratorio de AWS Academy.
-4. Redactar la documentación final (manual de implementación + procedimiento), según el diagrama de pizarra, una vez que el despliegue esté sano.
+1. **Crear todo de nuevo:**
+   ```bash
+   cd ~/carta-digital && git pull origin main
+   SALTAR_DOCKER=1 bash scripts/deploy/desplegar.sh
+   ```
+   (el subcomando por defecto es `todo`: AWS + Cloudflare en un solo comando. Asegurarse de que el AWS Academy Learner Lab esté iniciado antes, o las credenciales de CloudShell van a estar vencidas).
+2. Probar la app en `https://carta-v2-proxy.carlos0tapi.workers.dev` (no en la URL del ALB directo, esa es solo para diagnóstico).
+3. Al terminar la demo: `bash scripts/deploy/desplegar.sh destruir` (pide escribir `carta-v2` para confirmar) — borra AWS y Cloudflare en un solo comando.
+4. Redactar la documentación final (manual de implementación + procedimiento), según el diagrama de pizarra.
 
 ## 6. Convención de trabajo (recordatorio)
 
