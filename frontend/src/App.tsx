@@ -9,9 +9,8 @@ export function App(): JSX.Element {
   return (
     <Routes>
       <Route element={<Layout />}>
-        {/* No hay listado público de restaurantes: cada uno se accede
-            directo vía QR a /<slug> (ver Carta.tsx). "/" es solo una
-            pantalla neutra para quien entra sin slug. */}
+        {/* "/" muestra el selector público de restaurantes (ver Bienvenida.tsx);
+            cada uno también se puede abrir directo por su slug en /<slug>. */}
         <Route path="/" element={<Bienvenida />} />
         {/* Rutas estáticas ANTES del slug dinámico, para que no choquen. */}
         <Route path="/carrito" element={<Carrito />} />
