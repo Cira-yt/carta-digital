@@ -77,6 +77,16 @@ cargar_config() {
   SESSION_SECURE_COOKIE="${SESSION_SECURE_COOKIE:-false}"
   GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 
+  # Contraseñas de los usuarios de prueba (admin/cliente) que siembra db/init.sql.
+  # Si no se definen en deploy.env, se genera una al azar para este despliegue
+  # (nunca queda fija en el repo). Lo mismo para la base local de "docker".
+  ADMIN_SEED_PASSWORD_GENERADA=0
+  if [ -z "${ADMIN_SEED_PASSWORD:-}" ]; then
+    ADMIN_SEED_PASSWORD="$(openssl rand -base64 18)"
+    ADMIN_SEED_PASSWORD_GENERADA=1
+  fi
+  CLIENTE_SEED_PASSWORD="${CLIENTE_SEED_PASSWORD:-$(openssl rand -base64 18)}"
+
   # Cloudflare (opcional). Si las tres están completas, "cloudflare" automatiza
   # todo por API (crea el KV, publica el Worker, activa el subdominio) en vez
   # de solo imprimir los pasos manuales.
@@ -252,6 +262,7 @@ cmd_docker() {
   docker network create "$red" >/dev/null
   docker run -d --name "$db" --network "$red" \
     -e POSTGRES_DB=carta_digital -e POSTGRES_USER=carta_app -e POSTGRES_PASSWORD=prueba_local \
+    -e ADMIN_SEED_PASSWORD="$ADMIN_SEED_PASSWORD" -e CLIENTE_SEED_PASSWORD="$CLIENTE_SEED_PASSWORD" \
     -v "$RAIZ/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro" postgres:17-alpine >/dev/null
   for _ in $(seq 1 30); do docker exec "$db" pg_isready -U carta_app -d carta_digital >/dev/null 2>&1 && break; sleep 2; done
   sleep 3   # el entrypoint reinicia Postgres una vez después de correr init.sql
@@ -362,7 +373,8 @@ generar_user_data() { # archivo destino
     echo 'exec > >(tee -a /var/log/carta-digital-userdata.log) 2>&1'
     echo '# --- valores inyectados por scripts/deploy/desplegar.sh ---'
     for v in GITHUB_REPO GITHUB_BRANCH GITHUB_TOKEN DB_HOST DB_NAME DB_USER DB_PASSWORD \
-             RDS_MASTER_USER RDS_MASTER_PASSWORD SESSION_SECRET SESSION_SECURE_COOKIE; do
+             RDS_MASTER_USER RDS_MASTER_PASSWORD SESSION_SECRET SESSION_SECURE_COOKIE \
+             ADMIN_SEED_PASSWORD CLIENTE_SEED_PASSWORD; do
       printf '%s=%q\n' "$v" "${!v}"
     done
     cat <<'CUERPO'
@@ -398,12 +410,14 @@ echo "== [4/5] Base de datos en RDS (crea rol/base y carga init.sql solo si est�
 psql_rds() { # contraseña, resto de argumentos de psql
   local clave="$1"; shift
   docker run --rm -e PGSSLMODE=require -e PGPASSWORD="$clave" \
+    -e ADMIN_SEED_PASSWORD="$ADMIN_SEED_PASSWORD" -e CLIENTE_SEED_PASSWORD="$CLIENTE_SEED_PASSWORD" \
     -v /opt/carta-digital/scripts/deploy/sql:/sql:ro -v /opt/carta-digital/db:/sql-db:ro \
     postgres:17-alpine psql -v ON_ERROR_STOP=1 -h "$DB_HOST" "$@"
 }
 psql_rds "$RDS_MASTER_PASSWORD" -U "$RDS_MASTER_USER" -d postgres \
   -v app_user="$DB_USER" -v app_pass="$DB_PASSWORD" -v app_db="$DB_NAME" -f /sql/01-rol-y-base.sql
 psql_rds "$DB_PASSWORD" -U "$DB_USER" -d "$DB_NAME" -f /sql/02-esquema-si-vacia.sql
+echo "== (si la base estaba vacía, los usuarios de prueba quedaron con las contraseñas de ADMIN_SEED_PASSWORD/CLIENTE_SEED_PASSWORD recibidas; si ya tenía datos, no se tocó nada) =="
 
 echo "== [5/5] Contenedor de la app (app-prod, puerto 80) =="
 cat > .env.prod <<ENVEOF
@@ -432,6 +446,11 @@ cmd_app() {
   DB_HOST="${DB_HOST:-$(rds_endpoint)}"
   [ -n "$DB_HOST" ] || error "No encontré la RDS '$RDS_INSTANCE_ID'. Corré primero: desplegar.sh base-datos"
   requerir RDS_MASTER_PASSWORD DB_PASSWORD SESSION_SECRET GITHUB_REPO GITHUB_BRANCH
+
+  if [ "$ADMIN_SEED_PASSWORD_GENERADA" = 1 ]; then
+    aviso "Contraseña del usuario admin de la app (admin@gmail.com) generada para este despliegue: $ADMIN_SEED_PASSWORD"
+    aviso "Guárdala ahora (no se vuelve a mostrar). Si la base de datos ya tenía datos de antes, no se aplicó: sigue siendo la que ya tenía."
+  fi
 
   if [ -z "${AMI_ID:-}" ]; then
     AMI_ID=$(aws ssm get-parameter --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \

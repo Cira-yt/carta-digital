@@ -203,12 +203,21 @@ INSERT INTO items (id, nombre, descripcion, tiempo, observaciones, precio, visib
   (27, 'Sopa de Lentejas Casera', 'Lentejas guisadas con verduras, receta de la casa', '25 minutos', NULL, 4500, TRUE, FALSE, 4, 'lentejas_carolina.jpg', 1, 20),
   (28, 'Pastel de Choclo', 'Pastel de choclo tradicional chileno con pino', '35 minutos', NULL, 6500, TRUE, FALSE, 5, 'pastel_choclo_carolina.jpg', 1, 20);
 
--- Usuarios de prueba (hash bcrypt; las contraseñas en texto plano NO se guardan
--- ni se publican aquí porque este repo es público — solo quien generó el hash
--- las conoce. Si necesitas otra, genera tu propio hash con bcryptjs antes de usar este seed).
+-- Usuarios de prueba. IMPORTANTE: antes este archivo tenía un hash bcrypt fijo
+-- (y en commits viejos del repo, hasta la contraseña en texto plano) — con el
+-- repo público, cualquiera que mirara el historial de git podía reconstruir
+-- el login de admin. Ahora la contraseña se recibe por variable de entorno
+-- (ADMIN_SEED_PASSWORD / CLIENTE_SEED_PASSWORD) y se hashea al vuelo con
+-- pgcrypto, así nunca hay un hash fijo (ni mucho menos texto plano) commiteado.
+-- Quien corre el seed (desplegar.sh en AWS, o docker-compose en local) define
+-- esas variables; si no las define, se genera una aleatoria y se imprime una
+-- sola vez (ver scripts/deploy/desplegar.sh y .env.docker.example).
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+\getenv admin_password ADMIN_SEED_PASSWORD
+\getenv cliente_password CLIENTE_SEED_PASSWORD
 INSERT INTO usuarios (nombre, email, password, estado, rol) VALUES
-  ('Administrador', 'admin@gmail.com', '$2a$12$4KVxXhdbPERGV.Iw92dZDO5Tg6YNLCYkKHUFGHTRdULMMc7p9Wz6a', '1', 'admin'),
-  ('Alondra', 'alondra@gmail.com', '$2a$12$.gGFqAX.1NWZDSOofTLWve/AAHlM5KI234DhkjX67SXn1.Y6ZN3H.', '1', 'cliente');
+  ('Administrador', 'admin@gmail.com', crypt(:'admin_password', gen_salt('bf', 12)), '1', 'admin'),
+  ('Alondra', 'alondra@gmail.com', crypt(:'cliente_password', gen_salt('bf', 12)), '1', 'cliente');
 
 -- Reajusta las secuencias SERIAL (los INSERT de arriba usan IDs explícitos).
 SELECT setval(pg_get_serial_sequence('direcciones', 'id'), (SELECT MAX(id) FROM direcciones));
