@@ -1,0 +1,17 @@
+# Normaliza finales de línea. Los scripts de shell SIEMPRE en LF: si Git en
+# Windows los convierte a CRLF, bash falla al ejecutarlos en AWS/CloudShell.
+* text=auto
+*.sh text eol=lf
+Jenkinsfile text eol=lf
+*.sql text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+
+# Binarios
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary

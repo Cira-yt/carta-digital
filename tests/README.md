@@ -1,0 +1,39 @@
+# Pruebas funcionales de QA
+
+Suite de pruebas funcionales (requisito de la 3ra/4ta entrega: "usar IA para generar todas las
+pruebas funcionales de QA"), escrita con **Jest + Supertest** contra la app real (`createApp()`
+de `src/app.ts`), sin mocks del servidor — solo la base de datos es de pruebas.
+
+El sitio público es una SPA de React que consume una API JSON (`/api/*`); estos tests prueban esa
+API directamente (no HTML renderizado). El panel de administración sigue siendo Express + EJS sin
+cambios, así que sus tests siguen probando HTML como antes.
+
+## Qué cubren
+
+- `publico.test.ts` — `/api/restaurantes` (listado), `/api/restaurantes/:slug` (carta pública por
+  slug, no por id), `/health`.
+- `auth.test.ts` — `/api/login` correcto/incorrecto, CSRF por header, control de acceso al panel
+  admin (VUL-13/VUL-14).
+- `carrito.test.ts` — agregar al carrito vía `/api/carrito/*`, checkout real (crea un pedido),
+  carrito con ítems de varios restaurantes (crea un pedido separado por cada restaurante), carrito
+  vacío.
+- `admin.test.ts` — dashboard, crear categoría, validación de foto obligatoria, toggle de carta.
+- `ventas.test.ts` — cambiar el estado de un pedido (y que no se pueda cambiar el de otro
+  restaurante — IDOR), panel General de Ventas (todos los restaurantes juntos). Va en su propio
+  archivo (igual que `rateLimiter.test.ts`) porque cada login cuenta contra el límite de intentos
+  del rate limiter — sumarlos a los de `admin.test.ts` terminaba bloqueando los últimos.
+- `rateLimiter.test.ts` — bloqueo tras 5 intentos de login fallidos (VUL-20). Va en su propio
+  archivo para no compartir el contador en memoria con `auth.test.ts`.
+
+## Cómo corren
+
+1. `globalSetup.ts` aplica `db/schema.sql` (DROP + CREATE, deja todo limpio) contra una base de
+   datos de **pruebas** separada (nunca la real) y siembra un usuario admin y uno cliente.
+2. `env.setup.ts` fija las variables de entorno de la base de pruebas ANTES de que la app las lea,
+   así nunca hay riesgo de que un test corra contra datos reales.
+3. `npm test` (= `jest --runInBand`, en serie para no pisar datos entre tests).
+
+## Variables de entorno (opcionales, para sobreescribir los defaults de pruebas)
+
+`TEST_PGHOST`, `TEST_PGPORT`, `TEST_PGDATABASE`, `TEST_PGUSER`, `TEST_PGPASSWORD`.
+Defaults: `127.0.0.1:5432/carta_digital_test`, usuario `carta_test`.

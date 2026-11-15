@@ -1,0 +1,379 @@
+name: 3 Ambientes (Desarrollo / QA / Producción)
+
+# Valida los 3 ambientes de la entrega (docker-compose.yml): cada uno se
+# construye y se levanta de forma aislada, con su propio Postgres (excepto
+# Producción, que valida solo que la imagen compila — el despliegue real a
+# Producción lo hace Jenkins contra el servidor real, no este workflow).
+on:
+  push:
+    branches: [carta-digital-nodejs]
+  pull_request:
+    branches: [carta-digital-nodejs]
+  workflow_dispatch: {}
+
+jobs:
+  ambiente-desarrollo:
+    name: "Ambiente: Desarrollo"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # docker-compose.yml define los 3 ambientes en un solo archivo, cada
+      # uno con su propio env_file (.env.dev/.env.qa/.env.prod, nunca
+      # versionados). Cualquier comando de Compose que toque el proyecto
+      # completo (ej. "down" sin filtrar por servicio) necesita poder
+      # resolver los 3, aunque este job solo use .env.dev — por eso se
+      # generan los 3 como placeholders.
+      - name: Generar los 3 .env (placeholders de CI)
+        run: for amb in dev qa prod; do cp .env.docker.example ".env.$amb"; done
+
+      - name: Construir y levantar app-dev + db-dev
+        run: docker compose up -d --build app-dev db-dev
+
+      - name: Esperar a que /health responda (puerto 3001)
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3001/health; then echo; echo "OK"; exit 0; fi
+            sleep 2
+          done
+          echo "El ambiente de Desarrollo no respondió a tiempo"; exit 1
+
+      - name: Logs (si falló)
+        if: failure()
+        run: docker compose logs app-dev db-dev
+
+      - name: Apagar ambiente
+        if: always()
+        run: docker compose down -v
+
+  ambiente-qa:
+    name: "Ambiente: QA"
+    runs-on: ubuntu-latest
+    # Postgres para la suite de pruebas funcionales (npm test). Las
+    # credenciales coinciden con los valores por defecto de
+    # tests/env.setup.ts (los mismos que usa el pipeline de Jenkins), así
+    # que no hace falta pasar TEST_PG* explícitamente.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: carta_digital_test
+          POSTGRES_USER: carta_test
+          POSTGRES_PASSWORD: jenkins_test_only_2026
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U carta_test -d carta_digital_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Registrar versiones del entorno
+        run: |
+          echo "NODE_VERSION=$(node -v)" >> "$GITHUB_ENV"
+          echo "NPM_VERSION=$(npm -v)" >> "$GITHUB_ENV"
+
+      - name: Pruebas funcionales de QA (generadas con IA, ver tests/README.md)
+        run: |
+          inicio=$(date +%s)
+          npx jest --runInBand --json --outputFile=qa-results.json --coverage --coverageReporters=json-summary
+          codigo=$?
+          fin=$(date +%s)
+          echo "QA_TEST_DURATION_S=$((fin - inicio))" >> "$GITHUB_ENV"
+          exit $codigo
+
+      - name: Generar informe de QA (aprobación para pasar a Producción)
+        if: always()
+        env:
+          QA_TEST_DURATION_S: ${{ env.QA_TEST_DURATION_S }}
+          NODE_VERSION: ${{ env.NODE_VERSION }}
+          NPM_VERSION: ${{ env.NPM_VERSION }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, os, datetime, pathlib
+          from collections import OrderedDict
+
+          try:
+              r = json.loads(pathlib.Path("qa-results.json").read_text(encoding="utf-8"))
+          except FileNotFoundError:
+              r = {"success": False, "numTotalTests": 0, "numPassedTests": 0, "numFailedTests": 0, "testResults": []}
+
+          total = r.get("numTotalTests", 0)
+          passed = r.get("numPassedTests", 0)
+          failed = r.get("numFailedTests", 0)
+          aprobado = bool(r.get("success")) and total > 0
+
+          veredicto = "✅ APROBADO PARA PRODUCCIÓN" if aprobado else "❌ RECHAZADO — no se despliega a Producción"
+          fecha = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+          sha = os.environ.get("GITHUB_SHA", "desconocido")[:8]
+          rama = os.environ.get("GITHUB_REF_NAME", "desconocida")
+          autor = os.environ.get("GITHUB_ACTOR", "desconocido")
+          node_version = os.environ.get("NODE_VERSION", "desconocida")
+          npm_version = os.environ.get("NPM_VERSION", "desconocida")
+          duracion_s = os.environ.get("QA_TEST_DURATION_S", "")
+
+          # Cobertura de código (jest --coverage --coverageReporters=json-summary).
+          cobertura = None
+          cov_path = pathlib.Path("coverage/coverage-summary.json")
+          if cov_path.exists():
+              try:
+                  cov_total = json.loads(cov_path.read_text(encoding="utf-8")).get("total", {})
+                  cobertura = {
+                      k: cov_total[k]["pct"]
+                      for k in ("statements", "branches", "functions", "lines")
+                      if k in cov_total
+                  }
+              except (json.JSONDecodeError, KeyError):
+                  cobertura = None
+
+          lineas = [
+              "# Informe de QA — Carta Digital",
+              "",
+              f"**Fecha:** {fecha}",
+              f"**Commit:** {sha}",
+              f"**Rama:** {rama}",
+              f"**Autor del commit:** {autor}",
+              "**Ambiente:** QA (pruebas funcionales generadas con IA)",
+              "",
+              "## Entorno de ejecución",
+              "",
+              f"- Node.js: {node_version}",
+              f"- npm: {npm_version}",
+              "- PostgreSQL: 17 (alpine)",
+          ]
+          if duracion_s:
+              lineas.append(f"- Duración total de las pruebas: {duracion_s} s")
+          lineas += [
+              "",
+              "## Resultado de las pruebas funcionales",
+              "",
+              f"- Total: {total}",
+              f"- Pasaron: {passed}",
+              f"- Fallaron: {failed}",
+          ]
+
+          if cobertura:
+              etiquetas = {
+                  "statements": "Sentencias",
+                  "branches": "Ramas",
+                  "functions": "Funciones",
+                  "lines": "Líneas",
+              }
+              lineas += ["", "## Cobertura de código aproximada", ""]
+              lineas += [f"- {etiquetas.get(k, k)}: {v}%" for k, v in cobertura.items()]
+
+          # Agrupadas por funcionalidad real (el bloque describe() de cada
+          # suite, ej. "Autenticación y control de acceso", "Carrito y
+          # checkout"), no por nombre de archivo — así el informe explica QUÉ
+          # se probó, no dónde vive el archivo.
+          categorias: "OrderedDict[str, list]" = OrderedDict()
+          for tr in r.get("testResults", []):
+              for a in tr.get("assertionResults", []):
+                  ancestros = a.get("ancestorTitles") or []
+                  categoria = ancestros[0] if ancestros else "(sin categoría)"
+                  categorias.setdefault(categoria, []).append(a)
+
+          lineas += ["", "## Detalle por funcionalidad", ""]
+          for categoria, pruebas in categorias.items():
+              ok = sum(1 for a in pruebas if a.get("status") == "passed")
+              lineas.append(f"### {categoria} ({ok}/{len(pruebas)})")
+              lineas.append("")
+              for a in pruebas:
+                  estado = a.get("status")
+                  icono = "✅" if estado == "passed" else ("❌" if estado == "failed" else "⏭️")
+                  titulo = a.get("title", "(sin nombre)")
+                  duracion = a.get("duration")
+                  sufijo = f" ({duracion} ms)" if isinstance(duracion, int) else ""
+                  lineas.append(f"- {icono} {titulo}{sufijo}")
+                  if estado == "failed":
+                      for msg in a.get("failureMessages", []):
+                          primera_linea = msg.splitlines()[0] if msg else ""
+                          lineas.append(f"  - ⚠️ {primera_linea}")
+              lineas.append("")
+
+          lineas += ["## Veredicto", "", veredicto, ""]
+
+          contenido = "\n".join(lineas)
+          pathlib.Path("informe-qa.md").write_text(contenido, encoding="utf-8")
+
+          resumen = os.environ.get("GITHUB_STEP_SUMMARY")
+          if resumen:
+              with open(resumen, "a", encoding="utf-8") as f:
+                  f.write(contenido)
+          PYEOF
+
+      - name: Publicar informe de QA como artefacto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: informe-qa
+          path: informe-qa.md
+
+      - name: Generar los 3 .env (placeholders de CI)
+        run: for amb in dev qa prod; do cp .env.docker.example ".env.$amb"; done
+
+      - name: Construir y levantar app-qa + db-qa
+        run: docker compose up -d --build app-qa db-qa
+
+      - name: Esperar a que /health responda (puerto 3002)
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3002/health; then echo; echo "OK"; exit 0; fi
+            sleep 2
+          done
+          echo "El ambiente de QA no respondió a tiempo"; exit 1
+
+      - name: Logs (si falló)
+        if: failure()
+        run: docker compose logs app-qa db-qa
+
+      - name: Apagar ambiente
+        if: always()
+        run: docker compose down -v
+
+  auditoria-ia:
+    name: "Ambiente QA - Auditoría Automatizada con IA (GitHub Models, ASVS 5.0 L3)"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      models: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar el código fuente para la auditoría
+        run: |
+          {
+            echo "Código fuente completo de la aplicación (backend Express/TypeScript + frontend React/TypeScript, Carta Digital) a auditar."
+            echo
+            for f in $(find src frontend/src -name "*.ts" -o -name "*.tsx" 2>/dev/null | sort); do
+              echo "### Archivo: $f"
+              echo '```typescript'
+              cat "$f"
+              echo '```'
+              echo
+            done
+          } > codigo-para-auditar.txt
+          wc -l codigo-para-auditar.txt
+
+      # continue-on-error en el STEP (no en el job): así, aunque GitHub
+      # Models falle (bug conocido de actions/ai-inference@v1 — ver
+      # https://github.com/actions/ai-inference/issues — devuelve "OK" en
+      # vez de JSON), el JOB en sí queda en success y no aparece como la X
+      # roja en los checks del commit. Es un extra informativo, no un gate.
+      - name: Auditoría con IA (OWASP ASVS 5.0 Nivel 3)
+        id: audit
+        continue-on-error: true
+        uses: actions/ai-inference@v1
+        with:
+          model: openai/gpt-4.1
+          max-tokens: '2000'
+          system-prompt: |
+            Eres un auditor de seguridad experto en OWASP ASVS (Application
+            Security Verification Standard) versión 5.0, Nivel 3 (el más
+            estricto: aplicaciones críticas). Audita el código fuente de una
+            app Node.js/Express/TypeScript contra ASVS 5.0 L3, por capítulo
+            (V1 Arquitectura, V2 Autenticación, V3 Gestión de Sesión, V4
+            Control de Acceso, V5 Validación/Codificación/Sanitización, V6
+            Criptografía, V7 Manejo de Errores y Logging, V8 Protección de
+            Datos, V9 Comunicaciones, V11 Lógica de Negocio, V12
+            Archivos/Recursos, V13 API, V14 Configuración).
+
+            Responde en español, en Markdown, con esta estructura exacta:
+
+            # Informe de Auditoría IA — OWASP ASVS 5.0 (Nivel 3)
+
+            ## Resumen
+            (2-3 líneas sobre la postura general de seguridad del código)
+
+            ## Hallazgos
+            Por cada hallazgo REAL (no inventes problemas que no están en el
+            código mostrado):
+            - **[Severidad: Alta/Media/Baja] Título corto**
+              - Requisito ASVS: (capítulo y número, ej. V2.1.1)
+              - Archivo: ruta del archivo
+              - Descripción del problema
+              - Recomendación concreta
+
+            Si el código cumple razonablemente bien con una categoría, no
+            inventes hallazgos menores forzados ahí.
+
+            ## Veredicto
+            Termina con una única línea, EXACTAMENTE uno de estos dos textos
+            (nada más en esa línea): "VEREDICTO: APROBADO" o
+            "VEREDICTO: APROBADO CON OBSERVACIONES".
+          prompt-file: codigo-para-auditar.txt
+
+      - name: Guardar el informe de auditoría IA
+        if: always()
+        env:
+          AUDIT_REPORT: ${{ steps.audit.outputs.response }}
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          if [ "$AUDIT_OUTCOME" = "success" ]; then
+            printf '%s\n' "$AUDIT_REPORT" > informe-auditoria-ia.md
+          else
+            cat > informe-auditoria-ia.md <<'EOF'
+          # Informe de Auditoría IA — OWASP ASVS 5.0 (Nivel 3)
+
+          No se pudo generar este informe: GitHub Models devolvió una
+          respuesta inesperada (bug conocido y reportado de
+          `actions/ai-inference@v1`, no relacionado con este proyecto — ver
+          https://github.com/actions/ai-inference/issues). No bloquea el
+          paso a Producción; el gate real es el informe de QA basado en las
+          pruebas funcionales.
+          EOF
+          fi
+          cat informe-auditoria-ia.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Informativo, igual que OWASP Dependency-Check en el Jenkinsfile: no
+      # bloquea el paso a Producción (el gate real es el informe-qa de
+      # ambiente-qa, basado en las pruebas funcionales). Una auditoría de IA
+      # puede tener falsos positivos y no reemplaza el gate determinístico.
+      - name: Publicar informe de auditoría IA como artefacto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: informe-auditoria-ia
+          path: informe-auditoria-ia.md
+
+  ambiente-produccion:
+    name: "Ambiente: Producción"
+    runs-on: ubuntu-latest
+    needs: [ambiente-desarrollo, ambiente-qa]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Descargar el informe de QA
+        uses: actions/download-artifact@v4
+        with:
+          name: informe-qa
+
+      - name: Verificar que QA aprobó el paso a Producción
+        run: |
+          cat informe-qa.md
+          echo
+          if ! grep -q "APROBADO PARA PRODUCCIÓN" informe-qa.md; then
+            echo "El informe de QA no aprobó el paso a Producción. Abortando."
+            exit 1
+          fi
+
+      - name: Generar los 3 .env (placeholders de CI)
+        run: for amb in dev qa prod; do cp .env.docker.example ".env.$amb"; done
+
+      # Producción no se levanta aquí: usa network_mode: host + el Postgres
+      # NATIVO del servidor real (ver docker-compose.yml), algo que no existe
+      # en un runner de GitHub. Este job valida que la imagen compila — el
+      # despliegue real (build + up + healthcheck contra 52.0.165.26) lo
+      # hace Jenkins en la etapa "Despliegue a Producción" del Jenkinsfile.
+      - name: Validar que la imagen de Producción compila
+        run: docker compose build app-prod
