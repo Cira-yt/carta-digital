@@ -19,14 +19,13 @@ Usuario → Cloudflare Worker (*.workers.dev, WAF/rate-limit) → ALB (AWS) → 
 
 Todo se levanta con un solo script idempotente: `scripts/deploy/desplegar.sh` (subcomandos: `rds`, `app`, `cloudflare`, `verificar`, `destruir`, `todo`).
 
-## 3. Estado actual (15 nov 2026, ~12:30 hrs Chile)
+## 3. Estado actual (15 nov 2026, ~13:00 hrs Chile)
 
 - RDS: creada y disponible.
-- Target Group `carta-v2-tg`: creado manualmente (ARN `arn:aws:elasticloadbalancing:us-east-1:300612060668:targetgroup/carta-v2-tg/b11886f8ada994d6`).
-- ALB `carta-v2-alb`: creado manualmente con las 6 subnets (para evitar el bug de AZ que salió la vez anterior) y el SG `sg-06f4639b7fb5078e7` (ARN `arn:aws:elasticloadbalancing:us-east-1:300612060668:loadbalancer/app/carta-v2-alb/2d0a4c7e866516fc`, DNS `carta-v2-alb-1094498464.us-east-1.elb.amazonaws.com`).
-- **Pendiente ahora**: crear el listener HTTP:80 del ALB → luego correr `bash scripts/deploy/desplegar.sh app` para que cree el Launch Template y el Auto Scaling Group y espere a que el target esté sano.
-- Cloudflare: todavía no se ejecuta (el script no ha llegado a ese paso). Por eso `https://carta-v2-proxy.carlos0tapi.workers.dev/` muestra "There is nothing here yet" — es esperado, no es un error.
-- Variables de Cloudflare ya configuradas en `deploy.env`: `CF_API_TOKEN`, `CF_ACCOUNT_ID` (`eb0127d273ff6937933ad4065fc3afde`), `CF_SUBDOMAIN` (`carlos0tapi.workers.dev`).
+- Target Group `carta-v2-tg`, ALB `carta-v2-alb` (6 subnets, sin el bug de AZ) y su listener HTTP:80: creados, todo sano.
+- Auto Scaling Group (min 1 / deseadas 1 / max 1): **sano**. App funcionando directo en `http://carta-v2-alb-1094498464.us-east-1.elb.amazonaws.com`.
+- Cloudflare: el Worker `carta-v2-proxy` se publicó bien por API (código + KV namespace `carta-v2-rate-limit`), pero la URL pública `https://carta-v2-proxy.carlos0tapi.workers.dev` muestra "There is nothing here yet". Causa confirmada: el endpoint que activa la ruta `*.workers.dev` de un Worker puntual **rechaza la autenticación por API Token** (error `10405 Method not allowed for this authentication scheme`) — es una limitación real de Cloudflare, no un bug nuestro. El script ya se actualizó para detectar esto y avisar con instrucciones; el paso de activar la ruta hay que hacerlo **una sola vez, a mano**, en dash.cloudflare.com → Workers & Pages → `carta-v2-proxy` → Settings → Domains & Routes. Después de ese clic único queda prendido para siempre.
+- Variables de Cloudflare ya configuradas en `deploy.env`: `CF_API_TOKEN`, `CF_ACCOUNT_ID` (`eb0127d273ff6937933ad4065fc3afde`), `CF_SUBDOMAIN` (`carlos0tapi`).
 
 ## 4. Problemas encontrados y cómo se resolvieron
 
@@ -38,15 +37,14 @@ Todo se levanta con un solo script idempotente: `scripts/deploy/desplegar.sh` (s
 | El script muere en silencio justo en "Target Group" o "Application Load Balancer", sin mensaje de error, varias veces seguidas | Muy probablemente CloudShell recicla el proceso en primer plano tras un rato de inactividad del teclado (no es un bug del script; `tmux new` no ayuda porque CloudShell ya corre todo dentro de su propio tmux) | Mitigación: crear manualmente el recurso que se cortó (Target Group, luego ALB, luego listener) y retomar el script — es idempotente, detecta lo ya creado y sigue |
 | `gh pr list` falla ("GraphQL no disponible") | Restricción del entorno de Claude Code | Usar `gh api repos/{owner}/{repo}/pulls?head=...` (REST) en vez de GraphQL |
 | No se puede hacer `PATCH` directo a `refs/heads/main` por la API de GitHub | El proxy de este entorno bloquea esa escritura | `git fetch` + `git merge --ff-only` + `git push origin main` en local |
+| Worker de Cloudflare publicado pero la URL `*.workers.dev` muestra "There is nothing here yet" | El endpoint que activa la ruta `*.workers.dev` de un Worker (`PUT /accounts/{id}/workers/scripts/{name}/subdomain`) no acepta API Token, solo el método de auth antiguo (`10405 Method not allowed for this authentication scheme`) | Activar la ruta una sola vez a mano en el dashboard (Workers & Pages → el worker → Settings → Domains & Routes); el script ahora detecta el fallo y lo avisa con instrucciones en vez de asumir éxito |
 
 ## 5. Próximos pasos
 
-1. Crear el listener HTTP:80 del ALB (usando el ARN de arriba y el Target Group existente).
-2. Retomar `bash scripts/deploy/desplegar.sh app` (o el flujo completo) para Launch Template + Auto Scaling Group.
-3. Confirmar que el target quede "healthy" en el ALB.
-4. Correr `bash scripts/deploy/desplegar.sh cloudflare` y confirmar que `https://carta-v2-proxy.carlos0tapi.workers.dev` cargue la app a través del proxy.
-5. Una vez probado y con evidencia, correr `bash scripts/deploy/desplegar.sh destruir` para no seguir gastando horas del laboratorio de AWS Academy.
-6. Redactar la documentación final (manual de implementación + procedimiento), según el diagrama de pizarra, una vez que el despliegue esté sano.
+1. Activar a mano, una sola vez, la ruta `*.workers.dev` del worker `carta-v2-proxy` en el dashboard de Cloudflare.
+2. Confirmar que `https://carta-v2-proxy.carlos0tapi.workers.dev` cargue la app a través del proxy.
+3. Una vez probado y con evidencia, correr `bash scripts/deploy/desplegar.sh destruir` para no seguir gastando horas del laboratorio de AWS Academy.
+4. Redactar la documentación final (manual de implementación + procedimiento), según el diagrama de pizarra, una vez que el despliegue esté sano.
 
 ## 6. Convención de trabajo (recordatorio)
 
