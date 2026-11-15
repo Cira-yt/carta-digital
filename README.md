@@ -160,7 +160,7 @@ bash scripts/deploy/desplegar.sh            # verificar → docker → red → R
 | `estado` | Estado de RDS, Auto Scaling y salud en el Load Balancer |
 | `destruir` | Borra todo lo creado (pide confirmación) |
 
-> **Credenciales:** el script usa la sesión de la AWS CLI (**AWS CloudShell** o `aws configure`). Las contraseñas de la app y un **token de GitHub de solo lectura** (el repo es privado) van en `scripts/deploy/deploy.env`, que **no se sube al repo**. Cloudflare se configura a mano en el dashboard.
+> **Credenciales:** el script usa la sesión de la AWS CLI (**AWS CloudShell** o `aws configure`). Las contraseñas de la app van en `scripts/deploy/deploy.env`, que **no se sube al repo**. Cloudflare se configura a mano en el dashboard.
 > Guía completa: [`docs/despliegue-automatico.md`](docs/despliegue-automatico.md).
 
 ## CI/CD

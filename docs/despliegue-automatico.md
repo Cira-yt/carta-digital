@@ -37,7 +37,7 @@ Comprobación rápida: `aws sts get-caller-identity` (el script lo hace solo en 
 | Variable | Qué es |
 |---|---|
 | `GITHUB_BRANCH` | La rama nueva que subiste (las EC2 clonan esa rama) |
-| `GITHUB_TOKEN` | Token de GitHub **solo lectura** del repo (necesario porque el repo es privado): *Settings → Developer settings → Fine-grained tokens*, repo `carta-digital`, permiso *Contents: Read-only* |
+| `GITHUB_TOKEN` | (Opcional) solo si el repo es privado. Token de GitHub **solo lectura**: *Settings → Developer settings → Fine-grained tokens*, repo `carta-digital`, permiso *Contents: Read-only* |
 | `RDS_MASTER_PASSWORD` | Contraseña del usuario administrador de RDS (la inventás vos) |
 | `DB_PASSWORD` | Contraseña del usuario `carta_app` que usa la app (la inventás vos) |
 | `SESSION_SECRET` | Secreto de las cookies de sesión: `openssl rand -hex 32` |
