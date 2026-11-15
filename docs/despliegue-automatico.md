@@ -69,6 +69,8 @@ Al final imprime la URL `http://<alb>.elb.amazonaws.com` y los pasos de Cloudfla
 
 **Apagar todo** para no gastar créditos: `bash scripts/deploy/desplegar.sh destruir` (pide escribir el prefijo para confirmar; borra también la base RDS).
 
+> **Instalación separada:** la plantilla viene con `NAME_PREFIX=carta-v2` y `RDS_INSTANCE_ID=carta-v2-db`, así el script crea todo nuevo (`carta-v2-alb`, `carta-v2-asg`, `carta-v2-db`…) sin tocar la instalación anterior `carta-digital-*`. `destruir` también borra solo lo que tenga el prefijo `carta-v2`.
+
 ## 3. Cloudflare (manual)
 
 Con dominio propio (DNS + HTTPS):
