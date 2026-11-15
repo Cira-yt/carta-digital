@@ -10,7 +10,7 @@ const app = createApp();
 // que viene después sigue exactamente igual.
 async function loginAdmin(agent: ReturnType<typeof request.agent>): Promise<void> {
   const csrf = await csrfDeApi(agent);
-  await agent.post("/api/login").set("X-CSRF-Token", csrf).send({ email: "admin@test.local", password: "admin01" });
+  await agent.post("/api/login").set("X-CSRF-Token", csrf).send({ email: "admin@test.local", password: "TestPass#2026!" });
 }
 
 describe("Panel de administración", () => {

@@ -23,7 +23,7 @@ export default async function globalSetup(): Promise<void> {
     const schema = fs.readFileSync(path.join(__dirname, "..", "db", "schema.sql"), "utf8");
     await pool.query(schema);
 
-    const hashAdmin = await bcrypt.hash("admin01", 12);
+    const hashAdmin = await bcrypt.hash("TestPass#2026!", 12);
     await pool.query(
       `INSERT INTO usuarios (nombre, email, password, estado, rol) VALUES ($1, $2, $3, '1', 'admin')`,
       ["Admin QA", "admin@test.local", hashAdmin]
