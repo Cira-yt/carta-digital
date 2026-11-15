@@ -18,10 +18,12 @@ cambios, así que sus tests siguen probando HTML como antes.
   carrito con ítems de varios restaurantes (crea un pedido separado por cada restaurante), carrito
   vacío.
 - `admin.test.ts` — dashboard, crear categoría, validación de foto obligatoria, toggle de carta.
-- `ventas.test.ts` — cambiar el estado de un pedido (y que no se pueda cambiar el de otro
-  restaurante — IDOR), panel General de Ventas (todos los restaurantes juntos). Va en su propio
-  archivo (igual que `rateLimiter.test.ts`) porque cada login cuenta contra el límite de intentos
-  del rate limiter — sumarlos a los de `admin.test.ts` terminaba bloqueando los últimos.
+- `ventas.test.ts` — cambiar el estado de un pedido del restaurante activo, y que NO se pueda
+  cambiar el de otro restaurante (IDOR): se crea un pedido para el restaurante 1 y se intenta
+  modificarlo con la sesión del admin activa en el restaurante 2, confirmando por base de datos
+  que el estado no cambió. Va en su propio archivo (igual que `rateLimiter.test.ts`) porque cada
+  login cuenta contra el límite de intentos del rate limiter — sumarlos a los de `admin.test.ts`
+  terminaba bloqueando los últimos.
 - `rateLimiter.test.ts` — bloqueo tras 5 intentos de login fallidos (VUL-20). Va en su propio
   archivo para no compartir el contador en memoria con `auth.test.ts`.
 
