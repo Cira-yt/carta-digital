@@ -115,8 +115,11 @@ Requisitos: **Node.js 18+** y un **PostgreSQL 15+** (local o Docker).
 npm install
 cp .env.example .env              # completar PGPASSWORD y SESSION_SECRET
 
-# Cargar el esquema y los datos de ejemplo
-psql -h 127.0.0.1 -U carta_app -d carta_digital -f db/init.sql
+# Cargar el esquema y los datos de ejemplo (define las contraseñas de los
+# usuarios de prueba admin@gmail.com / alondra@gmail.com que crea el seed;
+# usá las que quieras, son solo para tu base local)
+ADMIN_SEED_PASSWORD=cambia-esta-clave CLIENTE_SEED_PASSWORD=cambia-esta-clave \
+  psql -h 127.0.0.1 -U carta_app -d carta_digital -f db/init.sql
 
 npm run dev                       # backend en http://localhost:3000
 npm run dev:frontend              # (opcional) React con recarga en http://localhost:5173
