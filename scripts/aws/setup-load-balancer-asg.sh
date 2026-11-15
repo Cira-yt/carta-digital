@@ -11,7 +11,7 @@
 #   2. Crea un security group para las instancias de la app (80 solo desde
 #      el ALB; 22 para poder entrar por SSH).
 #   3. Abre el puerto 5432 (Postgres) en el security group de la instancia
-#      ACTUAL (52.0.165.26) para que las nuevas instancias de la app puedan
+#      ACTUAL (<IP-PUBLICA-EJEMPLO>) para que las nuevas instancias de la app puedan
 #      conectarse a la base de datos real — esa instancia sigue siendo la
 #      única que corre Postgres, nunca se clona la base de datos.
 #   4. Crea un Target Group (HTTP:80, healthcheck en /health) y registra en
@@ -39,10 +39,14 @@ set -euo pipefail
 : "${SESSION_SECRET:?Definí SESSION_SECRET antes de correr el script: export SESSION_SECRET='...'}"
 
 # ------------------------------------------------------------------ Config
+# Nota: este script es legacy (reemplazado por scripts/deploy/desplegar.sh,
+# que crea/detecta estos recursos automáticamente). Los valores por defecto
+# de VPC/instancia/SG se quitaron porque el repo es público; definilos con
+# variables de entorno si necesitás correr esto puntualmente.
 REGION="${REGION:-us-east-1}"
-VPC_ID="${VPC_ID:-vpc-0952f484a5b3e1941}"
-EXISTING_INSTANCE_ID="${EXISTING_INSTANCE_ID:-i-0d0ad13d0090db9ac}"   # 52.0.165.26
-EXISTING_SG_ID="${EXISTING_SG_ID:-sg-014388a03158936ad}"
+: "${VPC_ID:?Definí VPC_ID antes de correr el script: export VPC_ID='vpc-...'}"
+: "${EXISTING_INSTANCE_ID:?Definí EXISTING_INSTANCE_ID antes de correr el script: export EXISTING_INSTANCE_ID='i-...'}"
+: "${EXISTING_SG_ID:?Definí EXISTING_SG_ID antes de correr el script: export EXISTING_SG_ID='sg-...'}"
 # La base de datos ya no vive en la instancia principal -- migrada a RDS
 # (ver scripts/aws/migrate-to-rds.sh). Borrar la instancia principal ya NO
 # afecta a la base de datos.

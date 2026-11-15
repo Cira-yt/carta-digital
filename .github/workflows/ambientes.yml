@@ -373,7 +373,7 @@ jobs:
       # Producción no se levanta aquí: usa network_mode: host + el Postgres
       # NATIVO del servidor real (ver docker-compose.yml), algo que no existe
       # en un runner de GitHub. Este job valida que la imagen compila — el
-      # despliegue real (build + up + healthcheck contra 52.0.165.26) lo
+      # despliegue real (build + up + healthcheck contra <IP-PUBLICA-EJEMPLO>) lo
       # hace Jenkins en la etapa "Despliegue a Producción" del Jenkinsfile.
       - name: Validar que la imagen de Producción compila
         run: docker compose build app-prod

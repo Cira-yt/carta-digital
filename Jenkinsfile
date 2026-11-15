@@ -11,7 +11,9 @@ pipeline {
 
   environment {
     DEPENDENCY_CHECK_HOME = '/opt/dependency-check-13.0.0'
-    PROD_HOST = '52.0.165.26'
+    // IP real retirada del repo público: configurar como credencial/variable
+    // de Jenkins (Manage Jenkins → System → Global properties), no acá.
+    PROD_HOST = "${env.PROD_HOST}"
   }
 
   stages {

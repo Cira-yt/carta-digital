@@ -17,7 +17,7 @@ describe("Autenticación y control de acceso", () => {
     const res = await agent
       .post("/api/login")
       .set("X-CSRF-Token", csrf)
-      .send({ email: "admin@test.local", password: "admin01" });
+      .send({ email: "admin@test.local", password: "TestPass#2026!" });
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ ok: true, nombre: "Admin QA", rol: "admin" });
@@ -41,7 +41,7 @@ describe("Autenticación y control de acceso", () => {
     const agent = request.agent(app);
     await csrfDeApi(agent); // solo para que haya sesión con csrfToken generado
 
-    const res = await agent.post("/api/login").send({ email: "admin@test.local", password: "admin01" });
+    const res = await agent.post("/api/login").send({ email: "admin@test.local", password: "TestPass#2026!" });
 
     expect(res.status).toBe(403);
   });
@@ -66,7 +66,7 @@ describe("Autenticación y control de acceso", () => {
     const login = await agent
       .post("/api/login")
       .set("X-CSRF-Token", csrf)
-      .send({ email: "admin@test.local", password: "admin01" });
+      .send({ email: "admin@test.local", password: "TestPass#2026!" });
 
     // El login regenera la sesión (y con ella el csrfToken) — hay que usar
     // el token nuevo que devuelve la respuesta, no el de antes de loguearse.

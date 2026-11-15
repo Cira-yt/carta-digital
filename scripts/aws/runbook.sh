@@ -24,7 +24,7 @@ set -euo pipefail
 REGION="${REGION:-us-east-1}"
 ASG_NAME="${ASG_NAME:-carta-digital-asg}"
 TG_NAME="${TG_NAME:-carta-digital-tg}"
-MAIN_INSTANCE_IP="${MAIN_INSTANCE_IP:-52.0.165.26}"   # la instancia principal (52.0.165.26) -- app + base de datos, nunca se apaga
+: "${MAIN_INSTANCE_IP:?Definí MAIN_INSTANCE_IP antes de correr el script: export MAIN_INSTANCE_IP='...'}"   # la instancia principal -- app + base de datos, nunca se apaga
 SSH_KEY="${SSH_KEY:-test.pem}"                         # ruta a la key en esta sesión de CloudShell (subila junto al script)
 
 TG_ARN() {

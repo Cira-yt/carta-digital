@@ -1,7 +1,7 @@
 # Capa de seguridad con Cloudflare (Workers)
 
 Capa de seguridad en el borde (edge) delante del servidor de Producción
-(`52.0.165.26`), pedida como parte de la 4ta entrega. No usa un dominio
+(`<IP-PUBLICA-EJEMPLO>`), pedida como parte de la 4ta entrega. No usa un dominio
 propio: se despliega en un subdominio gratis `*.workers.dev`.
 
 ## Qué protege
@@ -22,7 +22,7 @@ propio: se despliega en un subdominio gratis `*.workers.dev`.
    (sqlmap, nikto, nmap, masscan, acunetix, nessus, dirbuster, gobuster,
    wpscan).
 5. **Reverse proxy transparente** hacia el origen real: todo lo que pasa
-   los filtros anteriores se reenvía a `http://52.0.165.26` tal cual.
+   los filtros anteriores se reenvía a `http://<IP-PUBLICA-EJEMPLO>` tal cual.
 
 ## Despliegue (vía dashboard, sin CLI)
 
@@ -35,7 +35,7 @@ propio: se despliega en un subdominio gratis `*.workers.dev`.
    - Variable name: `RATE_LIMIT_KV`
    - KV namespace: el que creaste en el paso 4.
 6. **Save and deploy**.
-7. Tu URL pública queda como `https://carta-digital-security.<tu-usuario>.workers.dev` — pruébala, debe mostrar la app igual que `http://52.0.165.26`.
+7. Tu URL pública queda como `https://carta-digital-security.<tu-usuario>.workers.dev` — pruébala, debe mostrar la app igual que `http://<IP-PUBLICA-EJEMPLO>`.
 
 ## Cómo demostrarlo
 
@@ -54,7 +54,7 @@ propio: se despliega en un subdominio gratis `*.workers.dev`.
   real alto. En producción real se usaría el WAF nativo de Cloudflare
   (requiere tener el dominio como "zona" en Cloudflare) en vez de este
   WAF hecho a mano en el Worker.
-- La conexión Worker → origen va por HTTP plano (`52.0.165.26` no tiene
+- La conexión Worker → origen va por HTTP plano (`<IP-PUBLICA-EJEMPLO>` no tiene
   TLS propio). El tramo cliente → Worker sí es HTTPS (Cloudflare lo da
   gratis en `workers.dev`). Es el mismo modelo que "SSL flexible" de
   Cloudflare.

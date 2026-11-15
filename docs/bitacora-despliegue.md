@@ -6,7 +6,7 @@ Registro vivo del despliegue en AWS + Cloudflare, para no perder el hilo entre s
 
 - **Pantalla de inicio** (`frontend/src/pages/Bienvenida.tsx`): se reemplazó el flujo "escanea el QR" por un **selector público de restaurantes** (lista con buscador, usando el endpoint ya existente `GET /api/restaurantes`). No requirió cambios de backend.
 - **Gramática**: se corrigió el voseo a forma "tú" en toda la SPA (`LoginModal.tsx`, `SessionContext.tsx`, `Carrito.tsx`, `NoEncontrado.tsx`).
-- **Usuarios**: el código **no tiene registro propio** (no hay endpoint de sign-up). Solo existe un script de seed (`db/init.sql`) que crea un usuario admin fijo: `admin@gmail.com` / `admin01`. Si la contraseña real está olvidada, se resetea a mano con `bcryptjs.hashSync()` + `UPDATE` en la base, ya que el hash es de un solo sentido (no se puede "ver" la contraseña).
+- **Usuarios**: el código **no tiene registro propio** (no hay endpoint de sign-up). Solo existe un script de seed (`db/init.sql`) que crea un usuario admin fijo (correo `admin@gmail.com`; la contraseña no se publica aquí porque el repo es público). Si la contraseña real está olvidada, se resetea a mano con `bcryptjs.hashSync()` + `UPDATE` en la base, ya que el hash es de un solo sentido (no se puede "ver" la contraseña). **Importante:** esa contraseña estuvo expuesta en texto plano en commits anteriores del repo (ya corregido) — hay que cambiarla en la base real.
 - **Cloudflare automático por API**: se agregó a `scripts/deploy/desplegar.sh` un modo que crea el Worker, el namespace KV y activa el subdominio `*.workers.dev` solo con 3 variables en `deploy.env` (`CF_API_TOKEN`, `CF_ACCOUNT_ID`, `CF_SUBDOMAIN`). Si faltan esas variables, cae de vuelta al proceso manual (documentado en `docs/despliegue-automatico.md`, sección "Opción B").
 
 Todo esto ya está mergeado en `main` vía PR #1 y #2.
@@ -25,7 +25,7 @@ Todo se levanta con un solo script idempotente: `scripts/deploy/desplegar.sh` (s
 - Target Group `carta-v2-tg`, ALB `carta-v2-alb` (6 subnets, sin el bug de AZ) y su listener HTTP:80: creados, todo sano.
 - Auto Scaling Group (min 1 / deseadas 1 / max 1): **sano**. App funcionando directo en `http://carta-v2-alb-1094498464.us-east-1.elb.amazonaws.com`.
 - Cloudflare: el Worker `carta-v2-proxy` se publicó bien por API (código + KV namespace `carta-v2-rate-limit`), pero la URL pública `https://carta-v2-proxy.carlos0tapi.workers.dev` muestra "There is nothing here yet". Causa confirmada: el endpoint que activa la ruta `*.workers.dev` de un Worker puntual **rechaza la autenticación por API Token** (error `10405 Method not allowed for this authentication scheme`) — es una limitación real de Cloudflare, no un bug nuestro. El script ya se actualizó para detectar esto y avisar con instrucciones; el paso de activar la ruta hay que hacerlo **una sola vez, a mano**, en dash.cloudflare.com → Workers & Pages → `carta-v2-proxy` → Settings → Domains & Routes. Después de ese clic único queda prendido para siempre.
-- Variables de Cloudflare ya configuradas en `deploy.env`: `CF_API_TOKEN`, `CF_ACCOUNT_ID` (`eb0127d273ff6937933ad4065fc3afde`), `CF_SUBDOMAIN` (`carlos0tapi`).
+- Variables de Cloudflare ya configuradas en `deploy.env` (valores no se publican aquí porque el repo es público): `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `CF_SUBDOMAIN` (`carlos0tapi`, que de todas formas queda visible en la URL pública del Worker).
 
 ## 4. Problemas encontrados y cómo se resolvieron
 

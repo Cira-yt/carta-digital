@@ -225,12 +225,7 @@ El panel `/admin` incluye dashboard, cartas/categorías/productos, restaurantes,
 
 ## Credenciales de prueba
 
-Solo existen en los datos de ejemplo (`db/init.sql`). **Cambialas en producción.**
-
-| Usuario | Contraseña | Rol |
-|---|---|---|
-| admin@gmail.com | admin01 | Administrador |
-| alondra@gmail.com | alondra01 | Cliente |
+Los datos de ejemplo (`db/init.sql`) crean un usuario `admin` y un usuario `cliente` con contraseña hasheada (bcrypt). **No se publican las contraseñas aquí** porque este repositorio es público. Si necesitas una cuenta de prueba, genera tu propio hash (`bcryptjs.hashSync("tu-contraseña", 12)`) y reemplázalo en `db/init.sql` antes de desplegar. **Si ya desplegaste con alguna contraseña de ejemplo conocida, cámbiala antes de dejar el entorno expuesto a internet.**
 
 ## Documentación
 

@@ -2,7 +2,7 @@
 # =============================================================================
 # Carta Digital — crear la instancia RDS PostgreSQL (correr en AWS CloudShell).
 #
-# Hoy la base de datos vive SOLO en la instancia principal (52.0.165.26): si
+# Hoy la base de datos vive SOLO en la instancia principal (<IP-PUBLICA-EJEMPLO>): si
 # esa instancia se borra, se cae todo el sitio aunque el Load Balancer y el
 # Auto Scaling sigan funcionando. Este script crea una base de datos
 # administrada (RDS) que es un recurso aparte, independiente de esa
@@ -22,9 +22,9 @@ set -euo pipefail
 : "${RDS_MASTER_PASSWORD:?Definí RDS_MASTER_PASSWORD antes de correr el script: export RDS_MASTER_PASSWORD='...'}"
 
 REGION="${REGION:-us-east-1}"
-VPC_ID="${VPC_ID:-vpc-0952f484a5b3e1941}"
-APP_SG_ID="${APP_SG_ID:-sg-0261008102300ef2c}"          # instancias de la app (ASG)
-EXISTING_SG_ID="${EXISTING_SG_ID:-sg-014388a03158936ad}" # instancia principal -- necesario para migrar los datos
+: "${VPC_ID:?Definí VPC_ID antes de correr el script: export VPC_ID='vpc-...'}"
+: "${APP_SG_ID:?Definí APP_SG_ID antes de correr el script: export APP_SG_ID='sg-...'}"          # instancias de la app (ASG)
+: "${EXISTING_SG_ID:?Definí EXISTING_SG_ID antes de correr el script: export EXISTING_SG_ID='sg-...'}" # instancia principal -- necesario para migrar los datos
 DB_INSTANCE_ID="${DB_INSTANCE_ID:-carta-digital-db}"
 DB_MASTER_USER="${DB_MASTER_USER:-carta_admin}"
 INSTANCE_CLASS="${INSTANCE_CLASS:-db.t3.micro}"

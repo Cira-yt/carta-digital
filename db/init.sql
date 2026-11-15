@@ -203,7 +203,9 @@ INSERT INTO items (id, nombre, descripcion, tiempo, observaciones, precio, visib
   (27, 'Sopa de Lentejas Casera', 'Lentejas guisadas con verduras, receta de la casa', '25 minutos', NULL, 4500, TRUE, FALSE, 4, 'lentejas_carolina.jpg', 1, 20),
   (28, 'Pastel de Choclo', 'Pastel de choclo tradicional chileno con pino', '35 minutos', NULL, 6500, TRUE, FALSE, 5, 'pastel_choclo_carolina.jpg', 1, 20);
 
--- Usuarios de prueba (contraseña real: admin01 / alondra01 — hash bcrypt, nunca texto plano).
+-- Usuarios de prueba (hash bcrypt; las contraseñas en texto plano NO se guardan
+-- ni se publican aquí porque este repo es público — solo quien generó el hash
+-- las conoce. Si necesitas otra, genera tu propio hash con bcryptjs antes de usar este seed).
 INSERT INTO usuarios (nombre, email, password, estado, rol) VALUES
   ('Administrador', 'admin@gmail.com', '$2a$12$4KVxXhdbPERGV.Iw92dZDO5Tg6YNLCYkKHUFGHTRdULMMc7p9Wz6a', '1', 'admin'),
   ('Alondra', 'alondra@gmail.com', '$2a$12$.gGFqAX.1NWZDSOofTLWve/AAHlM5KI234DhkjX67SXn1.Y6ZN3H.', '1', 'cliente');
