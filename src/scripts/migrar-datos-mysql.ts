@@ -1,6 +1,6 @@
 /**
  * Migración de datos reales desde el MySQL de producción (pnkSecurity,
- * 52.0.165.26) hacia el PostgreSQL de este proyecto. Reemplaza los datos de
+ * <IP-PUBLICA-EJEMPLO>) hacia el PostgreSQL de este proyecto. Reemplaza los datos de
  * ejemplo por los 7 restaurantes/11 cartas/14 categorías/5 ítems reales,
  * preservando los IDs originales para no romper las relaciones.
  *

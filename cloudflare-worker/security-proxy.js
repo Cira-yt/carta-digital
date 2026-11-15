@@ -1,4 +1,4 @@
-// Cloudflare Worker — capa de seguridad delante de Producción (52.0.165.26).
+// Cloudflare Worker — capa de seguridad delante de Producción (<IP-PUBLICA-EJEMPLO>).
 // No requiere dominio propio: se despliega en un subdominio gratis
 // *.workers.dev. Cloudflare aplica protección DDoS/anti-bot de red a TODO
 // el tráfico que pasa por su infraestructura de forma automática, sin
@@ -17,7 +17,7 @@
 // literal (Cloudflare lo bloquea como "Error 1003: Direct IP Access Not
 // Allowed", abuso-prevención de su red). Por eso se usa el hostname
 // público que AWS asigna automáticamente a la IP elástica de la EC2
-// (resuelve exactamente a la misma IP, 52.0.165.26) en vez de la IP
+// (resuelve exactamente a la misma IP, <IP-PUBLICA-EJEMPLO>) en vez de la IP
 // cruda.
 const ORIGIN = "http://ec2-52-0-165-26.compute-1.amazonaws.com";
 

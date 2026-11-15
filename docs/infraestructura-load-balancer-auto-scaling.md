@@ -7,7 +7,7 @@ real ni causar downtime en el proceso.
 ## 1. Arquitectura actual (antes)
 
 ```
-Internet → Cloudflare Worker (WAF + rate limit) → EC2 única (52.0.165.26)
+Internet → Cloudflare Worker (WAF + rate limit) → EC2 única (<IP-PUBLICA-EJEMPLO>)
                                                      ├── app-prod (Docker, puerto 80)
                                                      └── PostgreSQL nativo (127.0.0.1:5432)
 ```
@@ -20,17 +20,17 @@ que aguante esa única máquina.
 
 ```
 Internet → Cloudflare Worker → ALB (2 zonas de disponibilidad)
-                                 ├── EC2 actual (52.0.165.26) — sigue siendo la BD + 1 réplica de la app
+                                 ├── EC2 actual (<IP-PUBLICA-EJEMPLO>) — sigue siendo la BD + 1 réplica de la app
                                  ├── EC2 nueva (Auto Scaling)  — solo app, conecta a la BD por IP privada
                                  └── EC2 nueva (Auto Scaling)  — solo app, conecta a la BD por IP privada
                                            ↓ (todas, por la red privada de la VPC)
-                                 PostgreSQL en 52.0.165.26 (172.31.27.117:5432) — sigue siendo la ÚNICA base de datos
+                                 PostgreSQL en <IP-PUBLICA-EJEMPLO> (<IP-PRIVADA-EJEMPLO>:5432) — sigue siendo la ÚNICA base de datos
 ```
 
 Puntos clave:
 
 - **La base de datos NO se clona ni se mueve.** Sigue viviendo en la
-  instancia actual (52.0.165.26 / IP privada `172.31.27.117`). Las instancias
+  instancia actual (<IP-PUBLICA-EJEMPLO> / IP privada `<IP-PRIVADA-EJEMPLO>`). Las instancias
   nuevas del Auto Scaling Group corren *solo* el contenedor de la app y se
   conectan a esa misma base por la red privada de la VPC.
 - **Las sesiones ya están en Postgres** (`connect-pg-simple`, no en memoria),
@@ -55,7 +55,7 @@ Puntos clave:
 
 Necesitás:
 
-- Acceso a la consola de AWS de la cuenta donde vive `52.0.165.26` (la
+- Acceso a la consola de AWS de la cuenta donde vive `<IP-PUBLICA-EJEMPLO>` (la
   cuenta donde ya existe esa instancia).
 - La contraseña real del usuario `carta_app` en Postgres y el `SESSION_SECRET`
   que ya usa producción (están en `.env.prod` de la instancia actual —
@@ -65,18 +65,21 @@ Necesitás:
   se llama `test`, pero conviene confirmarlo en EC2 → Network & Security →
   Key Pairs antes de correr el script).
 
-Datos reales de la infraestructura actual (ya completados en el script,
-tomados de los metadatos de la instancia — no hace falta volver a
-averiguarlos):
+Este documento describe un proceso manual **superado** por
+`scripts/deploy/desplegar.sh` (que crea/detecta estos recursos solo). Los
+identificadores reales de infraestructura (VPC, instancia, IPs, security
+group, AMI) se quitaron de aquí porque el repo es público; se obtienen con
+`aws ec2 describe-instances` / metadatos de la instancia si necesitás
+correr este flujo manual puntualmente.
 
-| Dato | Valor |
+| Dato | Cómo obtenerlo |
 |---|---|
 | Región | `us-east-1` |
-| VPC | `vpc-0952f484a5b3e1941` |
-| Instancia actual | `i-0d0ad13d0090db9ac` (52.0.165.26) |
-| IP privada (= host de la BD) | `172.31.27.117` |
-| Security group actual | `sg-014388a03158936ad` |
-| AMI (Amazon Linux 2023) | `ami-0567589d25e06853e` |
+| VPC | `aws ec2 describe-instances --query '...VpcId'` |
+| Instancia actual | `aws ec2 describe-instances --filters Name=tag:Name,Values=<nombre>` |
+| IP privada (= host de la BD) | metadatos de la instancia |
+| Security group actual | `aws ec2 describe-instances --query '...SecurityGroups'` |
+| AMI (Amazon Linux 2023) | `aws ec2 describe-images` o metadatos de la instancia |
 | Tipo de instancia | `t3.micro` |
 
 ## 5. Paso a paso
@@ -133,10 +136,10 @@ Guardá ese **ALB DNS** — lo necesitás en el paso 6.
 
 ### Paso 5 — Habilitar que Postgres acepte conexiones de red (manual)
 
-Por SSH a la instancia actual (52.0.165.26):
+Por SSH a la instancia actual (<IP-PUBLICA-EJEMPLO>):
 
 ```bash
-ssh -i test.pem ec2-user@52.0.165.26
+ssh -i test.pem ec2-user@<IP-PUBLICA-EJEMPLO>
 sudo -u postgres psql -c "SHOW config_file;"   # para ubicar postgresql.conf
 ```
 
@@ -149,7 +152,7 @@ listen_addresses = 'localhost'
 por:
 
 ```
-listen_addresses = 'localhost,172.31.27.117'
+listen_addresses = 'localhost,<IP-PRIVADA-EJEMPLO>'
 ```
 
 En `pg_hba.conf`, agregar una línea para que solo la red privada de la VPC
@@ -160,7 +163,7 @@ host    carta_digital    carta_app    172.31.0.0/16    scram-sha-256
 ```
 
 (ajustá el rango `172.31.0.0/16` al CIDR real de la VPC si es distinto —
-`aws ec2 describe-vpcs --vpc-ids vpc-0952f484a5b3e1941` lo muestra).
+`aws ec2 describe-vpcs --vpc-ids <VPC-ID-EJEMPLO>` lo muestra).
 
 Reiniciar Postgres:
 
@@ -176,7 +179,7 @@ reinicio (`curl http://127.0.0.1/health`) antes de seguir.
 En `cloudflare-worker/security-proxy.js`, cambiar:
 
 ```js
-const ORIGIN = "http://ec2-52-0-165-26.compute-1.amazonaws.com";
+const ORIGIN = "http://<dns-publico-ec2-ejemplo>.compute-1.amazonaws.com";
 ```
 
 por el DNS del ALB que imprimió el script:
@@ -243,7 +246,7 @@ aws ec2 delete-security-group --region us-east-1 --group-id "<ALB_SG_ID>"
 ```
 
 Y revertir el `ORIGIN` del Worker de Cloudflare al hostname original de
-`52.0.165.26`.
+`<IP-PUBLICA-EJEMPLO>`.
 
 ## 8. Qué queda pendiente para una versión "producción real"
 
