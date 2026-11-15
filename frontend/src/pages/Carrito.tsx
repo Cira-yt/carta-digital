@@ -71,7 +71,7 @@ export function Carrito(): JSX.Element {
         <div className="estado-vacio-tarjeta">
           <i className="ti-shopping-cart estado-vacio-tarjeta__icono" aria-hidden="true" />
           <p className="estado-vacio" style={{ padding: 0, marginBottom: 14 }}>
-            Tu carrito está vacío. Escaneá el QR de tu mesa para ver la carta.
+            Tu carrito está vacío. Elige un restaurante para ver la carta.
           </p>
           <Link to="/" className="boton boton--primario">
             Volver al inicio
@@ -121,7 +121,7 @@ export function Carrito(): JSX.Element {
             </button>
           </div>
           <p className="texto-ayuda" style={{ textAlign: "center", marginTop: 12 }}>
-            o avisale directamente al garzón para solicitarlo.
+            o avísale directamente al garzón para solicitarlo.
           </p>
         </>
       )}

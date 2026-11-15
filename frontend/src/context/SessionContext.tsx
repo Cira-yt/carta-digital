@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState, ReactNode 
 import { api, ApiError } from "../api";
 
 function mensajeDeError(err: unknown, porDefecto: string): string {
-  if (err instanceof ApiError && err.status === 429) return "Demasiados intentos. Esperá unos minutos y volvé a intentar.";
+  if (err instanceof ApiError && err.status === 429) return "Demasiados intentos. Espera unos minutos y vuelve a intentar.";
   return porDefecto;
 }
 

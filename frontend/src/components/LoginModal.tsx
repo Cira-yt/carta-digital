@@ -55,7 +55,7 @@ export function LoginModal({ onCerrar }: { onCerrar: () => void }): JSX.Element 
         {!pidiendo2fa ? (
           <form onSubmit={enviarLogin}>
             <h2>Bienvenido</h2>
-            <p className="modal-caja__sub">Ingresá para comentar y seguir tus pedidos.</p>
+            <p className="modal-caja__sub">Ingresa para comentar y seguir tus pedidos.</p>
             <div className="campo">
               <label htmlFor="login-email">Email</label>
               <input id="login-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -79,7 +79,7 @@ export function LoginModal({ onCerrar }: { onCerrar: () => void }): JSX.Element 
           <form onSubmit={enviar2fa}>
             <h2>Verificación en dos pasos</h2>
             <p className="texto-ayuda" style={{ marginBottom: 14 }}>
-              Ingresá el código de tu app de autenticación.
+              Ingresa el código de tu app de autenticación.
             </p>
             <div className="campo">
               <label htmlFor="login-2fa">Código</label>
