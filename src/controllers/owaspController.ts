@@ -70,9 +70,8 @@ const SECCIONES: SeccionOwasp[] = [
       "Manejador de errores genérico, nunca stack traces al cliente: `middlewares/errorHandler.ts`.",
       "`.env` nunca se versiona; se distribuye como `.env.example`/`.env.docker.example`.",
       "Contenedor Docker corre con **usuario no-root** (`cartaapp`): `Dockerfile`.",
+      "`app.set('trust proxy', 1)` detrás del ALB/Cloudflare, para que `req.ip` (rate-limit y log de seguridad) refleje la IP real del cliente y no la del proxy: `app.ts`.",
     ],
-    riesgoAceptado:
-      "Al desplegar detrás de un proxy/Cloudflare, falta agregar `app.set('trust proxy', 1)` para que `req.ip` (rate-limit y log de seguridad) refleje la IP real del cliente.",
   },
   {
     codigo: "A06:2021",

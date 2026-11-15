@@ -10,6 +10,16 @@ import { adminRouter } from "./routes/admin";
 export function createApp(): Express {
   const app = express();
 
+  // Detrás del ALB (y Cloudflare delante de este), el primer salto hacia la
+  // app es siempre el ALB: confiamos en 1 proxy para que Express tome la IP
+  // real del cliente desde X-Forwarded-For en vez de la IP interna del ALB.
+  // Sin esto, el rate-limit de login (middlewares/rateLimiter.ts) y el log
+  // de seguridad (utils/logSeguridad.ts) agrupan a TODOS los usuarios bajo
+  // la misma IP aparente, bloqueando a todos tras solo 5 intentos de
+  // cualquiera. Antes era un riesgo aceptado documentado en el informe OWASP
+  // (A05, "Security Misconfiguration"); queda resuelto con esta línea.
+  app.set("trust proxy", 1);
+
   app.disable("x-powered-by"); // no filtrar la tecnología/versión del servidor
 
   app.set("view engine", "ejs");
