@@ -6,7 +6,9 @@ Un solo script, `scripts/deploy/desplegar.sh`, levanta todo lo que pide la entre
 Git (rama nueva) ─► Docker ─► AWS ─┬─ RDS (PostgreSQL)
                                    ├─ Application Load Balancer
                                    └─ Auto Scaling Group (EC2 con la app en Docker)
-Cloudflare (DNS + HTTPS) ◄──────── paso MANUAL (el script imprime los datos exactos)
+Cloudflare (DNS + HTTPS) ◄──────── automático por API (si completás CF_API_TOKEN/
+                                   CF_ACCOUNT_ID/CF_SUBDOMAIN en deploy.env),
+                                   o paso manual si no (el script imprime los datos)
 ```
 
 | Paso | Qué hace | Automático |
@@ -71,16 +73,29 @@ Al final imprime la URL `http://<alb>.elb.amazonaws.com` y los pasos de Cloudfla
 
 > **Instalación separada:** la plantilla viene con `NAME_PREFIX=carta-v2` y `RDS_INSTANCE_ID=carta-v2-db`, así el script crea todo nuevo (`carta-v2-alb`, `carta-v2-asg`, `carta-v2-db`…) sin tocar la instalación anterior `carta-digital-*`. `destruir` también borra solo lo que tenga el prefijo `carta-v2`.
 
-## 3. Cloudflare (manual)
+## 3. Cloudflare
 
-Con dominio propio (DNS + HTTPS):
+### Opción A — automático por API (sin dominio propio, gratis)
+
+1. Crear una cuenta gratis en <https://dash.cloudflare.com/sign-up> y, en *Workers & Pages*, activar tu subdominio `*.workers.dev` (una sola vez).
+2. Copiar el **Account ID** (misma pantalla, barra lateral derecha).
+3. Crear un **API Token**: perfil → *API Tokens* → *Create Token* → plantilla **"Edit Cloudflare Workers"** (alcance de cuenta; en "Zone Resources" podés dejar "All zones", no se usa).
+4. Completar en `deploy.env`:
+   ```
+   CF_API_TOKEN=<tu token>
+   CF_ACCOUNT_ID=<tu account id>
+   CF_SUBDOMAIN=<tu-subdominio>        # sin ".workers.dev"
+   ```
+5. Correr `bash scripts/deploy/desplegar.sh cloudflare` (o el flujo completo). El script crea el KV de rate-limit, publica el Worker con `ORIGIN` apuntando al ALB y activa el subdominio. Queda disponible en `https://<CF_WORKER_NAME>.<CF_SUBDOMAIN>.workers.dev` (por defecto `CF_WORKER_NAME=${NAME_PREFIX}-proxy`).
+
+Si falta alguna de las tres variables, o la llamada a la API falla, el script cae automáticamente a las instrucciones manuales de la Opción B.
+
+### Opción B — manual, con dominio propio (DNS + HTTPS)
 
 1. *DNS → Records → Add record*: `CNAME` · nombre `carta` (o `@`) · destino = DNS del ALB · **Proxied** (nube naranja).
 2. *SSL/TLS → Overview*: modo **Flexible** (navegador→Cloudflare HTTPS; Cloudflare→ALB HTTP).
 3. *SSL/TLS → Edge Certificates*: activar **Always Use HTTPS**.
 4. Probar `https://<tu-dominio>/health` → `{"ok":true}`.
-
-Sin dominio: usar el Worker de `cloudflare-worker/` (el script ya dejó `ORIGIN` apuntando al ALB en `security-proxy.js`; solo hay que pegarlo en el dashboard — ver `cloudflare-worker/README.md`).
 
 ## 4. Problemas comunes
 

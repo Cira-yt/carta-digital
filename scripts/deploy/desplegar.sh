@@ -5,7 +5,11 @@
 #   Git (rama nueva) ─► Docker (contenedor) ─► AWS: RDS (Postgres)
 #                                                   Load Balancer
 #                                                   Auto Scaling
-#                       Cloudflare (DNS/HTTPS) ◄── paso MANUAL (instrucciones al final)
+#                       Cloudflare (DNS/HTTPS) ◄── automático por API si
+#                                                   CF_API_TOKEN/CF_ACCOUNT_ID/
+#                                                   CF_SUBDOMAIN están en
+#                                                   deploy.env; si no, imprime
+#                                                   los pasos manuales.
 #
 # Uso (desde la raíz del repo, en AWS CloudShell, WSL o Git Bash):
 #
@@ -20,7 +24,8 @@
 #   red          security groups (ALB, app, RDS)
 #   base-datos   crea la instancia RDS PostgreSQL
 #   app          Target Group + Load Balancer + Launch Template + Auto Scaling
-#   cloudflare   imprime los pasos manuales de Cloudflare con tus datos reales
+#   cloudflare   automatiza Cloudflare por API (ver CF_* abajo), o si no
+#                están esas variables, imprime los pasos manuales
 #   estado       muestra el estado de RDS, el Auto Scaling y la salud en el ALB
 #   todo         verificar → docker → red → base-datos → app → cloudflare
 #   destruir     BORRA todo lo que creó este script (pide confirmación)
@@ -63,6 +68,14 @@ cargar_config() {
   DB_USER="${DB_USER:-carta_app}"
   SESSION_SECURE_COOKIE="${SESSION_SECURE_COOKIE:-false}"
   GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+
+  # Cloudflare (opcional). Si las tres están completas, "cloudflare" automatiza
+  # todo por API (crea el KV, publica el Worker, activa el subdominio) en vez
+  # de solo imprimir los pasos manuales.
+  CF_API_TOKEN="${CF_API_TOKEN:-}"
+  CF_ACCOUNT_ID="${CF_ACCOUNT_ID:-}"
+  CF_SUBDOMAIN="${CF_SUBDOMAIN:-}"
+  CF_WORKER_NAME="${CF_WORKER_NAME:-${NAME_PREFIX}-proxy}"
 
   SG_ALB="${NAME_PREFIX}-alb-sg"
   SG_APP="${NAME_PREFIX}-app-sg"
@@ -157,6 +170,10 @@ cmd_verificar() {
   command -v aws >/dev/null || error "Falta AWS CLI v2 (en CloudShell ya viene instalado)."
   ok "aws $(aws --version 2>&1 | cut -d' ' -f1)"
   if command -v docker >/dev/null; then ok "docker disponible"; else aviso "docker no está instalado: se saltará la prueba local del contenedor."; fi
+  if [ -n "$CF_API_TOKEN" ]; then
+    command -v jq >/dev/null && ok "jq disponible (para automatizar Cloudflare)" \
+      || aviso "Falta 'jq': el paso de Cloudflare caerá a las instrucciones manuales."
+  fi
 
   paso "Verificando credenciales de AWS (¿iniciaste sesión?)"
   local identidad
@@ -486,6 +503,69 @@ JSON
 # =============================================================================
 # 5) CLOUDFLARE — pasos manuales (según la pizarra: se hace a mano)
 # =============================================================================
+cf_api() { # metodo ruta [args curl...] -> responde el JSON en stdout
+  local metodo="$1" ruta="$2"; shift 2
+  curl -sS -X "$metodo" "https://api.cloudflare.com/client/v4${ruta}" \
+    -H "Authorization: Bearer ${CF_API_TOKEN}" "$@"
+}
+
+# Crea el KV namespace, publica el Worker (module worker) con el binding
+# RATE_LIMIT_KV y activa el subdominio *.workers.dev — sin tocar el dashboard.
+# Devuelve 1 (sin cortar el script) si algo falla, para que cmd_cloudflare
+# caiga de nuevo a las instrucciones manuales.
+cmd_cloudflare_auto() {
+  local worker="$1" dns="$2"
+  command -v jq >/dev/null || { aviso "Falta 'jq': no puedo automatizar Cloudflare por API."; return 1; }
+
+  paso "Cloudflare (automático vía API) — Worker: $CF_WORKER_NAME"
+
+  local verif
+  verif=$(cf_api GET "/user/tokens/verify") || true
+  echo "$verif" | jq -e '.success == true' >/dev/null 2>&1 || {
+    aviso "Token de Cloudflare inválido o sin permisos: $(echo "$verif" | jq -r '.errors[0].message // "error desconocido"' 2>/dev/null)"
+    return 1
+  }
+
+  local nombre_kv="${NAME_PREFIX}-rate-limit"
+  local kv_id
+  kv_id=$(cf_api GET "/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces?per_page=100" \
+    | jq -r --arg t "$nombre_kv" '.result[]? | select(.title==$t) | .id' | head -n1)
+  if [ -z "$kv_id" ]; then
+    local resp_kv
+    resp_kv=$(cf_api POST "/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces" \
+      -H "Content-Type: application/json" --data "{\"title\":\"${nombre_kv}\"}")
+    kv_id=$(echo "$resp_kv" | jq -r '.result.id // empty')
+    [ -n "$kv_id" ] || { aviso "No se pudo crear el KV namespace: $(echo "$resp_kv" | jq -r '.errors[0].message // "error desconocido"')"; return 1; }
+    ok "KV namespace creado: $nombre_kv"
+  else
+    ok "KV namespace ya existía: $nombre_kv"
+  fi
+
+  local metadata
+  metadata=$(jq -n --arg kv "$kv_id" '{
+    main_module: "security-proxy.js",
+    compatibility_date: "2024-09-01",
+    bindings: [ { type: "kv_namespace", name: "RATE_LIMIT_KV", namespace_id: $kv } ]
+  }')
+  local resp_worker
+  resp_worker=$(curl -sS -X PUT "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${CF_WORKER_NAME}" \
+    -H "Authorization: Bearer ${CF_API_TOKEN}" \
+    -F "metadata=${metadata};type=application/json" \
+    -F "security-proxy.js=@${worker};type=application/javascript+module")
+  echo "$resp_worker" | jq -e '.success == true' >/dev/null 2>&1 || {
+    aviso "No se pudo publicar el Worker: $(echo "$resp_worker" | jq -r '.errors[0].message // "error desconocido"')"
+    return 1
+  }
+  ok "Worker publicado: $CF_WORKER_NAME (origen: http://$dns)"
+
+  curl -sS -X PUT "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/workers/scripts/${CF_WORKER_NAME}/subdomain" \
+    -H "Authorization: Bearer ${CF_API_TOKEN}" -H "Content-Type: application/json" \
+    --data '{"enabled":true,"previews_enabled":false}' >/dev/null
+
+  ok "URL pública: https://${CF_WORKER_NAME}.${CF_SUBDOMAIN}.workers.dev"
+  aviso "Puede tardar ~30-60s en quedar activo la primera vez."
+}
+
 cmd_cloudflare() {
   local dns; dns=$(alb_dns)
   [ -n "$dns" ] || dns="<DNS-del-ALB>"
@@ -495,6 +575,11 @@ cmd_cloudflare() {
   if [ -f "$worker" ] && [ "$dns" != "<DNS-del-ALB>" ]; then
     sed -i.bak -E "s#^const ORIGIN = \".*\";#const ORIGIN = \"http://$dns\";#" "$worker" && rm -f "$worker.bak"
     ok "cloudflare-worker/security-proxy.js actualizado: ORIGIN = http://$dns"
+  fi
+
+  if [ -n "$CF_API_TOKEN" ] && [ -n "$CF_ACCOUNT_ID" ] && [ -n "$CF_SUBDOMAIN" ]; then
+    cmd_cloudflare_auto "$worker" "$dns" && return 0
+    aviso "La automatización de Cloudflare falló; te dejo los pasos manuales como respaldo."
   fi
 
   cat <<TXT
