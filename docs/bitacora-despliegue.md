@@ -29,6 +29,7 @@ Lo que se validó en la prueba:
 - Se cambió la contraseña real del admin en la base (bcrypt + `UPDATE`), ya que había quedado expuesta en commits anteriores del repo público.
 - Se corrigió un bug real de seguridad: faltaba `app.set("trust proxy", 1)` en `app.ts`, lo que hacía que el rate-limit de login (5 intentos/15 min) agrupara a **todos** los usuarios bajo la misma IP aparente (la del ALB) — cualquiera se bloqueaba a todos. Ya está resuelto y desplegado.
 - `bash scripts/deploy/desplegar.sh destruir` ahora borra AWS **y** el Worker + KV namespace de Cloudflare en un solo comando (antes solo tocaba AWS).
+- **El SG del ALB ya no acepta tráfico de todo internet.** El subcomando `red` ahora descarga los rangos de IP públicos de Cloudflare (`cloudflare.com/ips-v4` e `ips-v6`) y abre el puerto 80/443 solo para esos rangos, en vez de `0.0.0.0/0`. Así nadie puede saltarse el Worker (y su rate-limit/WAF) pegándole directo a la URL del ALB. Se puede desactivar temporalmente para depurar con `RESTRINGIR_A_CLOUDFLARE=0`.
 
 Variables de Cloudflare configuradas en `deploy.env` (valores no se publican aquí porque el repo es público): `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `CF_SUBDOMAIN` (`carlos0tapi`, que de todas formas queda visible en la URL pública del Worker).
 
@@ -54,7 +55,7 @@ Variables de Cloudflare configuradas en `deploy.env` (valores no se publican aqu
    SALTAR_DOCKER=1 bash scripts/deploy/desplegar.sh
    ```
    (el subcomando por defecto es `todo`: AWS + Cloudflare en un solo comando. Asegurarse de que el AWS Academy Learner Lab esté iniciado antes, o las credenciales de CloudShell van a estar vencidas).
-2. Probar la app en `https://carta-v2-proxy.carlos0tapi.workers.dev` (no en la URL del ALB directo, esa es solo para diagnóstico).
+2. Probar la app en `https://carta-v2-proxy.carlos0tapi.workers.dev`. La URL directa del ALB ya no es accesible desde el navegador normal (el SG del ALB solo acepta tráfico desde IPs de Cloudflare); para diagnosticar el ALB directo hay que correr `red` con `RESTRINGIR_A_CLOUDFLARE=0` primero.
 3. Al terminar la demo: `bash scripts/deploy/desplegar.sh destruir` (pide escribir `carta-v2` para confirmar) — borra AWS y Cloudflare en un solo comando.
 4. Redactar la documentación final (manual de implementación + procedimiento), según el diagrama de pizarra.
 

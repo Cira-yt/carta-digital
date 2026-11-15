@@ -21,7 +21,10 @@
 #
 #   verificar    revisa herramientas, credenciales de AWS, variables y la rama de Git
 #   docker       construye la imagen y la prueba localmente (app + Postgres temporal)
-#   red          security groups (ALB, app, RDS)
+#   red          security groups (ALB, app, RDS). El SG del ALB solo deja
+#                entrar tráfico 80/443 desde los rangos de IP de Cloudflare
+#                (se descargan de cloudflare.com en cada corrida), para que
+#                nadie se salte el Worker pegándole directo al ALB.
 #   base-datos   crea la instancia RDS PostgreSQL
 #   app          Target Group + Load Balancer + Launch Template + Auto Scaling
 #   cloudflare   automatiza Cloudflare por API (ver CF_* abajo), o si no
@@ -33,8 +36,11 @@
 #                de Cloudflare también. Pide confirmación.
 #
 # Variables útiles:
-#   SALTAR_DOCKER=1   en "todo", omite la prueba local de Docker (ej. si
-#                     estás en una máquina sin Docker).
+#   SALTAR_DOCKER=1          en "todo", omite la prueba local de Docker (ej. si
+#                            estás en una máquina sin Docker).
+#   RESTRINGIR_A_CLOUDFLARE=0  deja el ALB abierto a todo internet (0.0.0.0/0)
+#                            en vez de restringirlo a IPs de Cloudflare. Útil
+#                            para probar el ALB directo mientras depurás.
 # =============================================================================
 set -euo pipefail
 
@@ -144,6 +150,27 @@ crear_sg() { # nombre descripcion -> imprime id
   printf '%s' "$id"
 }
 
+# Quita una regla de entrada ignorando el error "no existe".
+cerrar_puerto() { # sg puerto (--cidr X | --source-group Y)
+  local sg="$1" puerto="$2"; shift 2
+  local salida
+  if ! salida=$(aws ec2 revoke-security-group-ingress --group-id "$sg" --protocol tcp --port "$puerto" "$@" 2>&1); then
+    echo "$salida" | grep -q "InvalidPermission.NotFound" || { echo "$salida" >&2; exit 1; }
+  fi
+}
+
+# Descarga los rangos de IP públicos de Cloudflare (IPv4 + IPv6).
+# Se usan para que el ALB solo acepte tráfico que realmente viene de
+# Cloudflare, en vez de aceptar cualquier IP de internet (0.0.0.0/0),
+# lo que evita que alguien se salte el Worker (y su rate limiting/WAF)
+# pegándole directo a la URL del Load Balancer.
+ips_cloudflare() {
+  local v4 v6
+  v4=$(curl -fsS https://www.cloudflare.com/ips-v4) || error "No pude descargar https://www.cloudflare.com/ips-v4"
+  v6=$(curl -fsS https://www.cloudflare.com/ips-v6) || error "No pude descargar https://www.cloudflare.com/ips-v6"
+  printf '%s\n%s\n' "$v4" "$v6"
+}
+
 rds_endpoint() {
   aws rds describe-db-instances --db-instance-identifier "$RDS_INSTANCE_ID" \
     --query 'DBInstances[0].Endpoint.Address' --output text 2>/dev/null | limpio
@@ -251,9 +278,27 @@ cmd_red() {
   detectar_vpc
   paso "Security groups en $VPC_ID"
   ALB_SG_ID=$(crear_sg "$SG_ALB" "ALB publico - Carta Digital")
-  abrir_puerto "$ALB_SG_ID" 80 --cidr 0.0.0.0/0
-  abrir_puerto "$ALB_SG_ID" 443 --cidr 0.0.0.0/0
-  ok "ALB: $ALB_SG_ID (80/443 desde internet)"
+
+  if [ "${RESTRINGIR_A_CLOUDFLARE:-1}" = "1" ]; then
+    # Solo se acepta tráfico que venga de los rangos de IP de Cloudflare,
+    # para que no se pueda saltar el Worker (y su rate limiting) pegándole
+    # directo a la URL del ALB. Si por algún motivo ya existía la regla
+    # abierta a todo internet (de una versión anterior del script), se quita.
+    cerrar_puerto "$ALB_SG_ID" 80 --cidr 0.0.0.0/0
+    cerrar_puerto "$ALB_SG_ID" 443 --cidr 0.0.0.0/0
+    local n=0
+    while IFS= read -r cidr; do
+      [ -n "$cidr" ] || continue
+      abrir_puerto "$ALB_SG_ID" 80 --cidr "$cidr"
+      abrir_puerto "$ALB_SG_ID" 443 --cidr "$cidr"
+      n=$((n+1))
+    done < <(ips_cloudflare)
+    ok "ALB: $ALB_SG_ID (80/443 solo desde IPs de Cloudflare, $n rangos)"
+  else
+    abrir_puerto "$ALB_SG_ID" 80 --cidr 0.0.0.0/0
+    abrir_puerto "$ALB_SG_ID" 443 --cidr 0.0.0.0/0
+    ok "ALB: $ALB_SG_ID (80/443 desde internet — RESTRINGIR_A_CLOUDFLARE=0)"
+  fi
 
   APP_SG_ID=$(crear_sg "$SG_APP" "Instancias de la app - Carta Digital")
   abrir_puerto "$APP_SG_ID" 80 --source-group "$ALB_SG_ID"

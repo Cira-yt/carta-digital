@@ -15,7 +15,7 @@ Cloudflare (DNS + HTTPS) ◄──────── automático por API (si com
 |---|---|---|
 | `verificar` | Revisa AWS CLI, que tengas sesión iniciada en AWS, las variables y que la rama exista en GitHub | ✅ |
 | `docker` | `docker build` + prueba el contenedor con un Postgres temporal (`/health`, `/api/restaurantes`) | ✅ |
-| `red` | Security groups: ALB (80/443 público) → app (80 solo desde el ALB) → RDS (5432 solo desde la app) | ✅ |
+| `red` | Security groups: ALB (80/443 solo desde IPs de Cloudflare) → app (80 solo desde el ALB) → RDS (5432 solo desde la app) | ✅ |
 | `base-datos` | Crea la RDS PostgreSQL (privada, backups 7 días) | ✅ |
 | `app` | Target Group, Load Balancer, Launch Template, Auto Scaling (escala por CPU) | ✅ |
 | (en cada EC2) | Instala Docker, clona la rama, crea el usuario/la base en RDS, carga `db/init.sql` **solo si la base está vacía** y levanta `app-prod` | ✅ |
