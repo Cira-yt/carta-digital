@@ -28,7 +28,9 @@
 #                están esas variables, imprime los pasos manuales
 #   estado       muestra el estado de RDS, el Auto Scaling y la salud en el ALB
 #   todo         verificar → docker → red → base-datos → app → cloudflare
-#   destruir     BORRA todo lo que creó este script (pide confirmación)
+#   destruir     BORRA todo lo que creó este script, AWS y (si CF_API_TOKEN/
+#                CF_ACCOUNT_ID están configurados) el Worker + KV namespace
+#                de Cloudflare también. Pide confirmación.
 #
 # Variables útiles:
 #   SALTAR_DOCKER=1   en "todo", omite la prueba local de Docker (ej. si
@@ -642,8 +644,10 @@ cmd_estado() {
 
 cmd_destruir() {
   detectar_vpc
+  local mensaje_cf=""
+  [ -n "${CF_API_TOKEN:-}" ] && [ -n "${CF_ACCOUNT_ID:-}" ] && mensaje_cf=" y el Worker de Cloudflare '$CF_WORKER_NAME'"
   echo "${c_rojo}Esto BORRA (sin vuelta atrás): Auto Scaling, Load Balancer, Target Group,"
-  echo "Launch Template, la base RDS '$RDS_INSTANCE_ID' CON SUS DATOS y los security groups.${c_fin}"
+  echo "Launch Template, la base RDS '$RDS_INSTANCE_ID' CON SUS DATOS, los security groups${mensaje_cf}.${c_fin}"
   read -r -p "Para confirmar escribí el prefijo ($NAME_PREFIX): " resp
   [ "$resp" = "$NAME_PREFIX" ] || error "Cancelado."
 
@@ -672,6 +676,27 @@ cmd_destruir() {
     local id; id=$(sg_id "$n")
     [ -n "$id" ] && { aws ec2 delete-security-group --group-id "$id" 2>/dev/null || aviso "No se pudo borrar $n (reintentá en unos minutos)"; }
   done
+
+  if [ -n "${CF_API_TOKEN:-}" ] && [ -n "${CF_ACCOUNT_ID:-}" ]; then
+    paso "Cloudflare — Worker '$CF_WORKER_NAME' y KV namespace"
+    if command -v jq >/dev/null; then
+      cf_api DELETE "/accounts/${CF_ACCOUNT_ID}/workers/scripts/${CF_WORKER_NAME}" >/dev/null 2>&1 \
+        && ok "Worker borrado: $CF_WORKER_NAME" \
+        || aviso "Worker '$CF_WORKER_NAME' no existía o no se pudo borrar (puede que ya estuviera borrado)."
+      local nombre_kv kv_id
+      nombre_kv="${NAME_PREFIX}-rate-limit"
+      kv_id=$(cf_api GET "/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces?per_page=100" \
+        | jq -r --arg t "$nombre_kv" '.result[]? | select(.title==$t) | .id' | head -n1)
+      if [ -n "$kv_id" ]; then
+        cf_api DELETE "/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces/${kv_id}" >/dev/null 2>&1 \
+          && ok "KV namespace borrado: $nombre_kv" \
+          || aviso "No se pudo borrar el KV namespace '$nombre_kv'."
+      fi
+    else
+      aviso "Falta 'jq': no puedo borrar el Worker/KV de Cloudflare por API. Bórralos a mano en dash.cloudflare.com."
+    fi
+  fi
+
   ok "Listo."
 }
 
