@@ -40,7 +40,7 @@ Este mismo mapeo (versión resumida) también está disponible dentro del panel 
 - Manejador de errores genérico: nunca se devuelve el stack trace ni detalles internos al cliente (`src/middlewares/errorHandler.ts`); los detalles solo van a `console.error` en el servidor.
 - `.env` nunca se versiona (`.gitignore`); se distribuye como `.env.example`/`.env.docker.example` sin valores reales.
 - Contenedor Docker corre con **usuario no-root** (`cartaapp`), reduciendo el impacto de un RCE dentro del contenedor: `Dockerfile`.
-- **Pendiente para la fase de despliegue**: cuando la app quede detrás de un proxy/Cloudflare, agregar `app.set('trust proxy', 1)` para que `req.ip` (usado en rate-limit y en el log de seguridad, ver A09) refleje la IP real del cliente y no la del proxy.
+- Detrás del ALB/Cloudflare, `app.set('trust proxy', 1)` hace que `req.ip` (usado en rate-limit y en el log de seguridad, ver A09) refleje la IP real del cliente y no la del proxy: `src/app.ts`. Sin esto, el rate-limit de login terminaba agrupando a todos los usuarios bajo la misma IP aparente (la del proxy).
 
 ## A06:2021 — Vulnerable and Outdated Components
 
@@ -82,3 +82,4 @@ Este mismo mapeo (versión resumida) también está disponible dentro del panel 
 2. **Cifrado en reposo del secreto 2FA** (A02) — se agregó junto con el punto anterior, para no introducir un secreto sensible nuevo en texto plano.
 3. **Registro de eventos de seguridad** (A09) — no existía ningún log de intentos de login, 2FA ni acciones administrativas destructivas.
 4. **CSRF token faltante en la vista del carrito** (A01, variante de *missing function-level access control*): `src/views/carrito.ejs` nunca tuvo `<meta name="csrf-token">`, por lo que las llamadas AJAX a `/carrito/eliminar` y `/carrito/vaciar` iban con el token vacío. Corregido junto con la nueva pantalla de checkout.
+5. **`trust proxy` faltante detrás del ALB/Cloudflare** (A05) — `req.ip` reflejaba la IP del proxy para todos los clientes, por lo que el rate-limit de login (5 intentos/15 min) terminaba bloqueando a todos los usuarios a la vez en vez de por cliente real. Corregido en `src/app.ts` durante la fase de despliegue.
