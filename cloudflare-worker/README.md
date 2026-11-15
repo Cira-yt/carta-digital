@@ -24,18 +24,26 @@ propio: se despliega en un subdominio gratis `*.workers.dev`.
 5. **Reverse proxy transparente** hacia el origen real: todo lo que pasa
    los filtros anteriores se reenvía a `http://<IP-PUBLICA-EJEMPLO>` tal cual.
 
-## Despliegue (vía dashboard, sin CLI)
+## Despliegue
+
+### Opción A — automático (recomendado)
+
+`scripts/deploy/desplegar.sh cloudflare` (o el flujo completo `bash scripts/deploy/desplegar.sh`) hace todo esto por API: crea el KV Namespace, publica este mismo `security-proxy.js` como Worker con el `ORIGIN` apuntando al Load Balancer real, y activa el subdominio `*.workers.dev`. Solo hace falta completar `CF_API_TOKEN`/`CF_ACCOUNT_ID`/`CF_SUBDOMAIN` en `scripts/deploy/deploy.env`. Guía completa: [`docs/despliegue-automatico.md`](../docs/despliegue-automatico.md).
+
+### Opción B — manual, vía dashboard (sin CLI)
+
+Si preferís no usar el script (o estás con dominio propio en vez de `*.workers.dev`):
 
 1. Entra a [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages** → **Create** → **Create Worker**.
-2. Ponle un nombre (ej. `carta-digital-security`) → **Deploy** (esto crea un worker "Hello World" de placeholder).
-3. Click en **Edit code** → borra todo → pega el contenido de `security-proxy.js`.
+2. Ponle un nombre → **Deploy** (esto crea un worker "Hello World" de placeholder).
+3. Click en **Edit code** → borra todo → pega el contenido de `security-proxy.js`, reemplazando `ORIGIN` por la URL real de tu Load Balancer.
 4. Crea el KV Namespace que usa el rate limiting:
    - **Storage & Databases** → **KV** → **Create a namespace** → nómbralo `RATE_LIMIT_KV` → **Add**.
 5. Vuelve al Worker → **Settings** → **Variables and Secrets** (o **Bindings**, según la versión del dashboard) → **KV Namespace Bindings** → **Add binding**:
    - Variable name: `RATE_LIMIT_KV`
    - KV namespace: el que creaste en el paso 4.
 6. **Save and deploy**.
-7. Tu URL pública queda como `https://carta-digital-security.<tu-usuario>.workers.dev` — pruébala, debe mostrar la app igual que `http://<IP-PUBLICA-EJEMPLO>`.
+7. Tu URL pública queda como `https://<nombre-del-worker>.<tu-usuario>.workers.dev` — pruébala, debe mostrar la app igual que la URL directa del Load Balancer.
 
 ## Cómo demostrarlo
 

@@ -19,7 +19,7 @@
 // público que AWS asigna automáticamente a la IP elástica de la EC2
 // (resuelve exactamente a la misma IP, <IP-PUBLICA-EJEMPLO>) en vez de la IP
 // cruda.
-const ORIGIN = "http://ec2-52-0-165-26.compute-1.amazonaws.com";
+const ORIGIN = "http://<DNS-PUBLICO-EC2-EJEMPLO>";
 
 const SQLI_XSS_PATTERNS = [
   /union(\s|\/\*.*\*\/)+select/i,
