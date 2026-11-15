@@ -150,6 +150,19 @@ abrir_puerto() { # sg puerto (--cidr X | --source-group Y)
   fi
 }
 
+# Igual que abrir_puerto, pero para un rango IPv6: la forma corta --cidr de
+# authorize-security-group-ingress solo acepta IPv4 ("CIDR block ... is
+# malformed" si se le pasa un rango IPv6), así que esto arma el permiso con
+# --ip-permissions, que sí soporta Ipv6Ranges.
+abrir_puerto_ipv6() { # sg puerto cidr_ipv6
+  local sg="$1" puerto="$2" cidr="$3"
+  local salida
+  if ! salida=$(aws ec2 authorize-security-group-ingress --group-id "$sg" \
+    --ip-permissions "IpProtocol=tcp,FromPort=$puerto,ToPort=$puerto,Ipv6Ranges=[{CidrIpv6=$cidr}]" 2>&1); then
+    echo "$salida" | grep -q "InvalidPermission.Duplicate" || { echo "$salida" >&2; exit 1; }
+  fi
+}
+
 crear_sg() { # nombre descripcion -> imprime id
   local id; id=$(sg_id "$1")
   if [ -z "$id" ]; then
@@ -300,8 +313,13 @@ cmd_red() {
     local n=0
     while IFS= read -r cidr; do
       [ -n "$cidr" ] || continue
-      abrir_puerto "$ALB_SG_ID" 80 --cidr "$cidr"
-      abrir_puerto "$ALB_SG_ID" 443 --cidr "$cidr"
+      if [[ "$cidr" == *:* ]]; then
+        abrir_puerto_ipv6 "$ALB_SG_ID" 80 "$cidr"
+        abrir_puerto_ipv6 "$ALB_SG_ID" 443 "$cidr"
+      else
+        abrir_puerto "$ALB_SG_ID" 80 --cidr "$cidr"
+        abrir_puerto "$ALB_SG_ID" 443 --cidr "$cidr"
+      fi
       n=$((n+1))
     done < <(ips_cloudflare)
     ok "ALB: $ALB_SG_ID (80/443 solo desde IPs de Cloudflare, $n rangos)"
