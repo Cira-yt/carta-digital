@@ -194,24 +194,34 @@ ips_cloudflare() {
   printf '%s\n%s\n' "$v4" "$v6"
 }
 
+# Nota sobre el "|| true" en estas 4 funciones: a diferencia de los Security
+# Groups (describe-security-groups --filters, que devuelve lista vacía con
+# éxito si no hay match), estos describe-* "por nombre" (--db-instance-
+# -identifier, --names) hacen que aws devuelva un error real (ej.
+# "TargetGroupNotFound") cuando el recurso todavía no existe. Sin el
+# "|| true", ese error (con "set -o pipefail" + "set -e") mata el script
+# entero en silencio (el mensaje real queda oculto por el "2>/dev/null" que
+# sirve justamente para no ensuciar la salida en el caso normal de "todavía
+# no existe"). Estas funciones se usan para chequear existencia, así que no
+# existir no es un error: debe devolver vacío, no cortar el script.
 rds_endpoint() {
   aws rds describe-db-instances --db-instance-identifier "$RDS_INSTANCE_ID" \
-    --query 'DBInstances[0].Endpoint.Address' --output text 2>/dev/null | limpio
+    --query 'DBInstances[0].Endpoint.Address' --output text 2>/dev/null | limpio || true
 }
 
 alb_arn() {
   aws elbv2 describe-load-balancers --names "$ALB_NAME" \
-    --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null | limpio
+    --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null | limpio || true
 }
 
 alb_dns() {
   aws elbv2 describe-load-balancers --names "$ALB_NAME" \
-    --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null | limpio
+    --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null | limpio || true
 }
 
 tg_arn() {
   aws elbv2 describe-target-groups --names "$TG_NAME" \
-    --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null | limpio
+    --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null | limpio || true
 }
 
 # =============================================================================
