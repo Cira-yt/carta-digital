@@ -42,7 +42,7 @@ Proyecto construido con **seguridad desde el diseño**: incorpora las correccion
 | Contenedores | Dockerfile multi-etapa (usuario no-root + healthcheck) y `docker-compose` con 3 ambientes |
 | Nube | AWS: **RDS**, **Application Load Balancer**, **Auto Scaling Group** (EC2) |
 | Borde | **Cloudflare**: DNS + HTTPS y Worker con WAF ligero y rate limiting |
-| CI/CD | GitHub Actions (3 ambientes) + Jenkins (OWASP Dependency-Check, `npm audit`) |
+| CI/CD | GitHub Actions (3 ambientes) + Jenkins (verificador de Pull Requests: tests, gitleaks, `npm audit`) |
 | Pruebas | Jest + Supertest |
 
 ## Arquitectura
@@ -99,9 +99,10 @@ Dentro de cada contenedor, Express sirve:
 │   │   ├── desplegar.sh
 │   │   ├── deploy.env.example
 │   │   └── sql/               ← inicialización idempotente de RDS
+│   ├── jenkins/                ← ⭐ despliega Jenkins (verificador de PRs), ver docs/jenkins.md
 │   └── aws/                   ← scripts operativos (runbook, migración a RDS, ALB/ASG)
 ├── cloudflare-worker/         ← Worker de seguridad (WAF + rate limit + anti-scanners)
-├── docs/                      ← guías: despliegue, infraestructura, OWASP
+├── docs/                      ← guías: despliegue, infraestructura, Jenkins
 ├── .github/workflows/         ← GitHub Actions (dev / QA / prod)
 ├── Dockerfile · docker-compose.yml · Jenkinsfile
 └── package.json
@@ -160,7 +161,8 @@ bash scripts/deploy/desplegar.sh            # verificar → docker → red → R
 | `red` / `base-datos` / `app` | Security groups · RDS · Load Balancer + Auto Scaling |
 | `cloudflare` | Automatiza Cloudflare por API (Worker + KV + subdominio) si `CF_API_TOKEN`/`CF_ACCOUNT_ID`/`CF_SUBDOMAIN` están completos en `deploy.env`; si no, imprime los pasos manuales de DNS/HTTPS |
 | `estado` | Estado de RDS, Auto Scaling y salud en el Load Balancer |
-| `destruir` | Borra todo lo creado (pide confirmación) |
+| `destruir` | Borra Auto Scaling, Load Balancer, security groups y Cloudflare — **no** toca la RDS (pide confirmación) |
+| `destruir-todo` | Lo mismo que `destruir`, y además borra la RDS con sus datos (irreversible, confirmación más exigente) |
 
 > **Credenciales:** el script usa la sesión de la AWS CLI (**AWS CloudShell** o `aws configure`). Las contraseñas de la app van en `scripts/deploy/deploy.env`, que **no se sube al repo**. Cloudflare se configura solo (sin dominio propio) con `CF_API_TOKEN`/`CF_ACCOUNT_ID`/`CF_SUBDOMAIN`, o a mano en el dashboard si preferís dominio propio.
 > Guía completa: [`docs/despliegue-automatico.md`](docs/despliegue-automatico.md).
@@ -171,7 +173,7 @@ bash scripts/deploy/desplegar.sh            # verificar → docker → red → R
   - Levanta el ambiente de **Desarrollo**.
   - Levanta el ambiente de **QA** y corre la suite de pruebas.
   - Valida que la imagen de **Producción** compile.
-- **Jenkins** (`Jenkinsfile`): Checkout → Dependencias → Build → QA → `npm audit` → **OWASP Dependency-Check** (MITRE/NVD) → despliegue a Producción solo si pasa los filtros de seguridad.
+- **Jenkins** (`Jenkinsfile`): verifica cada Pull Request hacia `main` — build, tests, `gitleaks` (secretos filtrados) y `npm audit` — y publica el resultado como check del PR. No despliega nada: el merge requiere además al menos 1 aprobación humana (branch protection). Guía completa: [`docs/jenkins.md`](docs/jenkins.md).
 
 ## Pruebas
 
@@ -205,7 +207,7 @@ Detalle: [`tests/README.md`](tests/README.md).
 | Errores | Sin stack traces ni SQL hacia el cliente |
 | Contenedor | Usuario no-root, imagen mínima (alpine), healthcheck |
 | Infraestructura | RDS privada (solo accesible desde la app), ALB como única entrada pública, WAF en el borde |
-| Dependencias | `npm audit` + OWASP Dependency-Check en el pipeline |
+| Dependencias | `npm audit` + `gitleaks` en cada Pull Request (Jenkins) |
 
 Más detalle: [`docs/OWASP.md`](docs/OWASP.md).
 
@@ -229,6 +231,7 @@ El panel `/admin` incluye dashboard, cartas/categorías/productos, restaurantes,
 
 - [`docs/despliegue-automatico.md`](docs/despliegue-automatico.md): despliegue y credenciales.
 - [`docs/infraestructura-load-balancer-auto-scaling.md`](docs/infraestructura-load-balancer-auto-scaling.md): detalle del ALB y el Auto Scaling.
+- [`docs/jenkins.md`](docs/jenkins.md): verificador de Pull Requests (Jenkins) y branch protection.
 - [`docs/OWASP.md`](docs/OWASP.md): mapeo de vulnerabilidades y su remediación.
 - [`cloudflare-worker/README.md`](cloudflare-worker/README.md): capa de seguridad en Cloudflare.
 - [`tests/README.md`](tests/README.md): pruebas funcionales.

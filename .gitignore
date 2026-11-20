@@ -11,6 +11,7 @@ npm-debug.log*
 
 # Configuración del despliegue (tiene contraseñas)
 scripts/deploy/deploy.env
+scripts/jenkins/jenkins.env
 
 # Llaves y certificados: nunca al repo
 *.pem

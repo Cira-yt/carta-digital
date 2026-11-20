@@ -64,3 +64,14 @@ Variables de Cloudflare configuradas en `deploy.env` (valores no se publican aqu
 ## 6. Convención de trabajo (recordatorio)
 
 Todo cambio de código va en una rama propia, con commits separados y mensaje claro, PR vía `gh api` (REST, no GraphQL), merge, y luego `main` se sincroniza en local con `git merge --ff-only` desde la rama de entrega y se sube con `git push origin main`.
+
+## 7. Jenkins — verificador de Pull Requests (2da parte del proyecto)
+
+El `Jenkinsfile` de la entrega anterior desplegaba por SSH a un servidor fijo — ya no aplica desde que la app vive en un Auto Scaling Group (instancias efímeras, sin un host único). Se reemplazó por completo:
+
+- **Nuevo rol de Jenkins**: solo verifica Pull Requests hacia `main` (build, tests, `gitleaks` para secretos filtrados, `npm audit`), reporta el resultado como check del PR, y manda un email con el resumen — tanto al terminar el check del PR como después de cada merge a `main`. No despliega nada automáticamente.
+- El merge en sí lo sigue decidiendo un humano: GitHub exige el check en verde **y** al menos 1 aprobación (branch protection), con bypass de administrador activado mientras se prueba en solitario (GitHub no deja aprobar el propio PR).
+- Jenkins corre en su propia EC2 (Docker), separada de las instancias de la app, con el panel (8080) restringido a la IP del desarrollador — sin webhook público: el Job usa *polling* a GitHub cada pocos minutos.
+- Guía completa de instalación y configuración: [`docs/jenkins.md`](jenkins.md). Scripts: `scripts/jenkins/desplegar-jenkins.sh` (infraestructura) y `scripts/jenkins/configurar-branch-protection.sh` (regla de protección de `main`).
+
+**`desplegar.sh destruir` ahora deja la RDS intacta.** Antes borraba todo junto, lo que perdía los platos/datos cargados en cada prueba. Se separó en dos comandos: `destruir` (todo menos la RDS) y `destruir-todo` (todo, RDS incluida, con una confirmación más exigente: hay que escribir `BORRAR <nombre-de-la-RDS>` en vez de solo el prefijo).
