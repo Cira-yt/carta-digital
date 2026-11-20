@@ -48,8 +48,9 @@ Puntos clave:
   ALB sigue hablando HTTP puro puertas adentro, igual que hoy con la
   instancia única.
 - Adaptar Jenkins para desplegar a varias instancias a la vez: las
-  instancias del ASG se autoconfiguran solas al arrancar (ver el script);
-  Jenkins sigue desplegando contra la instancia original como siempre.
+  instancias del ASG se autoconfiguran solas al arrancar (ver el script).
+  *(Nota de una etapa posterior: Jenkins ya no despliega nada — ver
+  `docs/jenkins.md`. Es solo un verificador de Pull Requests.)*
 
 ## 4. Antes de empezar
 
@@ -254,5 +255,7 @@ Y revertir el `ORIGIN` del Worker de Cloudflare al hostname original de
   alta disponibilidad, no solo la app.
 - HTTPS extremo a extremo (hoy el TLS lo termina Cloudflare en el borde).
 - Certificado ACM + listener HTTPS:443 en el propio ALB.
-- Que Jenkins, en vez de desplegar por SSH a una sola IP fija, publique una
-  nueva versión del Launch Template y dispare un *instance refresh* del ASG.
+- ~~Que Jenkins, en vez de desplegar por SSH a una sola IP fija, publique una
+  nueva versión del Launch Template y dispare un *instance refresh* del ASG.~~
+  *(Superado: Jenkins dejó de desplegar por completo — ver `docs/jenkins.md`.
+  El despliegue real sigue siendo `scripts/deploy/desplegar.sh`.)*

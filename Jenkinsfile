@@ -1,6 +1,18 @@
-// Pipeline de CI/CD (4ta entrega): Desarrollo -> QA -> filtro de seguridad -> Producción,
-// igual al flujo descrito en clase: "si pasa, automáticamente se despliega a producción;
-// si no, Jenkins rechaza el despliegue y notifica los problemas."
+// Pipeline de CI (2da parte del proyecto): Jenkins es un VERIFICADOR, no un
+// desplegador. Corre en cada Pull Request hacia main (y de nuevo, mas liviano,
+// despues de cada merge a main) y reporta el resultado como check del PR.
+//
+// El merge en si lo decide GitHub: ademas de este check en verde, la rama
+// main exige al menos 1 aprobacion humana (branch protection, ver
+// docs/jenkins.md). Jenkins no aprueba ni bloquea el merge por si mismo, ni
+// despliega nada automaticamente — eso es deliberado, ver docs/jenkins.md.
+//
+// Requiere un Job tipo "Multibranch Pipeline" con el plugin GitHub Branch
+// Source (Discover branches + Discover pull requests): asi cada build se
+// publica solo como check en el Pull Request correspondiente, sin codigo
+// adicional en este Jenkinsfile. El disparador es "Periodically if not
+// otherwise run" (polling), no un webhook publico — Jenkins no necesita
+// quedar expuesto a internet para esto (ver docs/jenkins.md).
 pipeline {
   agent any
 
@@ -10,115 +22,103 @@ pipeline {
   }
 
   environment {
-    DEPENDENCY_CHECK_HOME = '/opt/dependency-check-13.0.0'
-    // IP real retirada del repo público: configurar como credencial/variable
-    // de Jenkins (Manage Jenkins → System → Global properties), no acá.
-    PROD_HOST = "${env.PROD_HOST}"
+    IMAGEN_NODE = 'node:20-alpine'
+    RED_PRUEBA  = "ci-${env.BUILD_TAG}"
+    DB_PRUEBA   = "ci-db-${env.BUILD_TAG}"
   }
 
   stages {
     stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Instalar dependencias y build') {
       steps {
-        checkout scm
+        sh '''
+          docker run --rm -v "$WORKSPACE:/app" -w /app "$IMAGEN_NODE" \
+            sh -c "npm ci && npm run build"
+        '''
       }
     }
 
-    stage('Instalar dependencias') {
+    stage('Tests (con Postgres temporal)') {
       steps {
-        sh 'npm ci'
-      }
-    }
-
-    stage('Build') {
-      steps {
-        sh 'npm run build'
-      }
-    }
-
-    stage('QA: pruebas funcionales') {
-      steps {
-        sh 'npm test'
-      }
-    }
-
-    stage('Seguridad: npm audit (filtro principal)') {
-      steps {
-        // Solo dependencias de producción: lo que realmente se despliega.
-        // audit-level=high -> build falla si hay algo "high" o "critical".
-        sh 'npm audit --omit=dev --audit-level=high'
-      }
-    }
-
-    stage('Seguridad: OWASP Dependency-Check (MITRE/NVD)') {
-      steps {
-        withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
-          // No bloquea el pipeline si falla (ver post/unstable abajo): el
-          // filtro real es npm audit. Esta etapa deja el reporte real de
-          // CVEs (base de datos de MITRE/NVD) como evidencia, sin arriesgar
-          // el despliegue si NVD está lento/con rate-limit en esta instancia
-          // de recursos reducidos.
-          script {
-            def resultado = sh(
-              script: '''
-                mkdir -p dependency-check-report
-                export JAVA_OPTS="-Xmx384m"
-                "$DEPENDENCY_CHECK_HOME"/bin/dependency-check.sh \
-                  --project "carta-digital-node" \
-                  --scan "package-lock.json" \
-                  --format HTML --format JSON \
-                  --out dependency-check-report \
-                  --disableAssembly \
-                  --nvdApiKey "$NVD_API_KEY" \
-                  --failOnCVSS 9
-              ''',
-              returnStatus: true
-            )
-            if (resultado != 0) {
-              unstable("OWASP Dependency-Check terminó con advertencias/errores (código ${resultado}) — revisar el reporte. No bloquea el despliegue; el filtro obligatorio es npm audit.")
-            }
-          }
-        }
+        sh '''
+          docker network create "$RED_PRUEBA"
+          docker run -d --name "$DB_PRUEBA" --network "$RED_PRUEBA" \
+            -e POSTGRES_DB=carta_digital_test -e POSTGRES_USER=carta_test \
+            -e POSTGRES_PASSWORD=jenkins_test_only_2026 postgres:17-alpine
+          for i in $(seq 1 30); do
+            docker exec "$DB_PRUEBA" pg_isready -U carta_test -d carta_digital_test >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker run --rm --network "$RED_PRUEBA" -v "$WORKSPACE:/app" -w /app \
+            -e TEST_PGHOST="$DB_PRUEBA" "$IMAGEN_NODE" npm test
+        '''
       }
       post {
         always {
-          archiveArtifacts artifacts: 'dependency-check-report/**', allowEmptyArchive: true
+          sh 'docker rm -f "$DB_PRUEBA" >/dev/null 2>&1 || true; docker network rm "$RED_PRUEBA" >/dev/null 2>&1 || true'
         }
       }
     }
 
-    stage('Despliegue a Producción') {
-      // Este Job apunta siempre a la rama carta-digital-nodejs (configurado
-      // en la definición del Job, ver create-job.groovy) — no es un job
-      // Multibranch, así que no existe BRANCH_NAME para filtrar por "when".
+    stage('Seguridad: secretos filtrados (gitleaks)') {
       steps {
-        sshagent(credentials: ['prod-server-ssh']) {
-          sh '''
-            ssh -o StrictHostKeyChecking=accept-new ec2-user@${PROD_HOST} '
-              set -e
-              cd ~/carta-digital-node
-              git fetch origin carta-digital-nodejs
-              git reset --hard origin/carta-digital-nodejs
-              sudo docker compose build app-prod
-              sudo docker compose up -d app-prod
-              sleep 10
-              sudo docker compose ps app-prod
-              curl -sf http://127.0.0.1/health
-            '
-          '''
-        }
+        sh '''
+          docker run --rm -v "$WORKSPACE:/repo" zricethezav/gitleaks:latest \
+            detect --source=/repo --no-git -v
+        '''
+      }
+    }
+
+    stage('Seguridad: dependencias vulnerables (npm audit)') {
+      steps {
+        sh '''
+          docker run --rm -v "$WORKSPACE:/app" -w /app "$IMAGEN_NODE" \
+            npm audit --omit=dev --audit-level=high
+        '''
       }
     }
   }
 
   post {
-    success {
-      echo "Pipeline OK — desplegado a Producción (http://${PROD_HOST}/)."
+    always {
+      script {
+        // CHANGE_ID solo existe en builds de Pull Request (lo define el
+        // plugin GitHub Branch Source). Si no esta seteado, este build es
+        // de la propia rama main — osea, corrio DESPUES de un merge.
+        def esPR = env.CHANGE_ID != null
+        def alcance = esPR
+          ? "Pull Request #${env.CHANGE_ID} (${env.CHANGE_BRANCH} -> ${env.CHANGE_TARGET})"
+          : "rama ${env.BRANCH_NAME} (post-merge)"
+
+        def cambios = sh(
+          script: esPR
+            ? "git diff --name-status origin/${env.CHANGE_TARGET}...HEAD 2>/dev/null || true"
+            : "git diff --name-status HEAD~1 HEAD 2>/dev/null || true",
+          returnStdout: true
+        ).trim()
+
+        emailext(
+          to: 'carlos0tapi@gmail.com',
+          subject: "[Carta Digital] ${currentBuild.currentResult}: ${alcance}",
+          body: """Resultado: ${currentBuild.currentResult}
+Alcance: ${alcance}
+Commit: ${env.GIT_COMMIT}
+Log completo: ${env.BUILD_URL}console
+
+Archivos modificados:
+${cambios ?: '(sin cambios detectados)'}
+"""
+        )
+      }
     }
-    unstable {
-      echo "Pipeline con advertencias (ver OWASP Dependency-Check) — se desplegó igual porque el filtro obligatorio (npm audit) pasó."
+    success {
+      echo 'Verificacion OK (el merge sigue necesitando al menos 1 aprobacion humana en GitHub).'
     }
     failure {
-      echo "Pipeline FALLÓ (QA o npm audit) — NO se despliega a Producción. Revisar los logs de la etapa que falló."
+      echo 'Verificacion FALLIDA — revisar el log de la etapa que fallo. GitHub bloqueara el merge mientras este check este en rojo.'
     }
   }
 }

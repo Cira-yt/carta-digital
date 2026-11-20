@@ -31,9 +31,13 @@
 #                están esas variables, imprime los pasos manuales
 #   estado       muestra el estado de RDS, el Auto Scaling y la salud en el ALB
 #   todo         verificar → docker → red → base-datos → app → cloudflare
-#   destruir     BORRA todo lo que creó este script, AWS y (si CF_API_TOKEN/
-#                CF_ACCOUNT_ID están configurados) el Worker + KV namespace
-#                de Cloudflare también. Pide confirmación.
+#   destruir     BORRA Auto Scaling, Load Balancer, Target Group, Launch
+#                Template, security groups y (si CF_API_TOKEN/CF_ACCOUNT_ID
+#                están configurados) el Worker + KV namespace de Cloudflare.
+#                La RDS NO se toca (para no perder los datos cargados en la
+#                app entre una prueba y otra). Pide confirmación.
+#   destruir-todo  Lo mismo que "destruir", y ADEMÁS borra la RDS con sus
+#                datos (irreversible). Pide una confirmación más exigente.
 #
 # Variables útiles:
 #   SALTAR_DOCKER=1          en "todo", omite la prueba local de Docker (ej. si
@@ -739,7 +743,9 @@ cmd_destruir() {
   local mensaje_cf=""
   [ -n "${CF_API_TOKEN:-}" ] && [ -n "${CF_ACCOUNT_ID:-}" ] && mensaje_cf=" y el Worker de Cloudflare '$CF_WORKER_NAME'"
   echo "${c_rojo}Esto BORRA (sin vuelta atrás): Auto Scaling, Load Balancer, Target Group,"
-  echo "Launch Template, la base RDS '$RDS_INSTANCE_ID' CON SUS DATOS, los security groups${mensaje_cf}.${c_fin}"
+  echo "Launch Template, los security groups${mensaje_cf}.${c_fin}"
+  echo "La base RDS '$RDS_INSTANCE_ID' NO se toca (así no perdés los datos cargados"
+  echo "en la app). Para borrarla también, usá: desplegar.sh destruir-todo"
   read -r -p "Para confirmar escribí el prefijo ($NAME_PREFIX): " resp
   [ "$resp" = "$NAME_PREFIX" ] || error "Cancelado."
 
@@ -756,18 +762,13 @@ cmd_destruir() {
   arn=$(tg_arn); [ -n "$arn" ] && { sleep 10; aws elbv2 delete-target-group --target-group-arn "$arn"; }
   paso "Launch Template"
   aws ec2 delete-launch-template --launch-template-name "$LT_NAME" >/dev/null 2>&1 || true
-  paso "RDS (sin snapshot final)"
-  if aws rds describe-db-instances --db-instance-identifier "$RDS_INSTANCE_ID" >/dev/null 2>&1; then
-    aws rds delete-db-instance --db-instance-identifier "$RDS_INSTANCE_ID" \
-      --skip-final-snapshot --delete-automated-backups >/dev/null
-    aws rds wait db-instance-deleted --db-instance-identifier "$RDS_INSTANCE_ID"
-  fi
-  aws rds delete-db-subnet-group --db-subnet-group-name "$DB_SUBNET_GROUP" 2>/dev/null || true
   paso "Security groups"
-  for n in "$SG_RDS" "$SG_APP" "$SG_ALB"; do
+  for n in "$SG_APP" "$SG_ALB"; do
     local id; id=$(sg_id "$n")
     [ -n "$id" ] && { aws ec2 delete-security-group --group-id "$id" 2>/dev/null || aviso "No se pudo borrar $n (reintentá en unos minutos)"; }
   done
+  # El SG de RDS no se borra acá: sigue en uso por la instancia RDS, que
+  # justamente dejamos viva. Lo borra destruir-todo, junto con la RDS.
 
   if [ -n "${CF_API_TOKEN:-}" ] && [ -n "${CF_ACCOUNT_ID:-}" ]; then
     paso "Cloudflare — Worker '$CF_WORKER_NAME' y KV namespace"
@@ -803,6 +804,34 @@ cmd_destruir() {
   ok "Listo."
 }
 
+# Borra ABSOLUTAMENTE todo, RDS incluida (con sus datos). Primero corre el
+# mismo destruir() de arriba (ASG/ALB/TG/LT/SG de app/Cloudflare) y después
+# borra la RDS y su security group. Pide una confirmación más exigente que
+# destruir() porque esto sí es irreversible para los datos de la app.
+cmd_destruir_todo() {
+  detectar_vpc
+  echo "${c_rojo}Esto borra TODO, incluyendo la base RDS '$RDS_INSTANCE_ID' CON SUS DATOS."
+  echo "No hay vuelta atrás: cualquier plato/pedido/usuario cargado se pierde para siempre.${c_fin}"
+  read -r -p "Para confirmar escribí exactamente: BORRAR $RDS_INSTANCE_ID
+> " resp
+  [ "$resp" = "BORRAR $RDS_INSTANCE_ID" ] || error "Cancelado."
+
+  cmd_destruir
+
+  paso "RDS (sin snapshot final) — CON SUS DATOS"
+  if aws rds describe-db-instances --db-instance-identifier "$RDS_INSTANCE_ID" >/dev/null 2>&1; then
+    aws rds delete-db-instance --db-instance-identifier "$RDS_INSTANCE_ID" \
+      --skip-final-snapshot --delete-automated-backups >/dev/null
+    aws rds wait db-instance-deleted --db-instance-identifier "$RDS_INSTANCE_ID"
+  fi
+  aws rds delete-db-subnet-group --db-subnet-group-name "$DB_SUBNET_GROUP" 2>/dev/null || true
+  paso "Security group de RDS"
+  local id; id=$(sg_id "$SG_RDS")
+  [ -z "$id" ] || { aws ec2 delete-security-group --group-id "$id" 2>/dev/null || aviso "No se pudo borrar $SG_RDS (reintentá en unos minutos)."; }
+
+  ok "Listo — no quedó nada."
+}
+
 # =============================================================================
 main() {
   local cmd="${1:-todo}"
@@ -816,7 +845,8 @@ main() {
     app)        cmd_app ;;
     cloudflare) cmd_cloudflare ;;
     estado)     cmd_estado ;;
-    destruir)   cmd_destruir ;;
+    destruir)      cmd_destruir ;;
+    destruir-todo) cmd_destruir_todo ;;
     todo)
       cmd_verificar
       [ "${SALTAR_DOCKER:-0}" = 1 ] || cmd_docker
