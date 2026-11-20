@@ -102,7 +102,7 @@ cmd_red() {
   local sg; sg=$(sg_id "$SG_NAME")
   if [ -z "$sg" ]; then
     sg=$(aws ec2 create-security-group --group-name "$SG_NAME" \
-      --description "Jenkins — Carta Digital (solo verificador de PRs)" \
+      --description "Jenkins - Carta Digital (solo verificador de PRs)" \
       --vpc-id "$VPC_ID" --query GroupId --output text)
     aws ec2 create-tags --resources "$sg" --tags "Key=Name,Value=$SG_NAME" "Key=Proyecto,Value=$NAME_PREFIX"
   fi
