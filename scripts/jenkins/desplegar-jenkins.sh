@@ -140,10 +140,20 @@ DOCKERFILE
 docker build -t jenkins-con-docker /opt/jenkins-imagen
 
 echo "== [3/3] Contenedor de Jenkins (puerto 8080, con socket de Docker montado) =="
-docker volume create jenkins_home >/dev/null
+# IMPORTANTE: usamos un bind mount a la MISMA ruta absoluta dentro y fuera del
+# contenedor (/var/jenkins_home), en vez de un volumen con nombre. Esto es
+# obligatorio para Docker-outside-of-Docker: cuando un pipeline hace
+# `docker run -v "$WORKSPACE:/app" ...`, ese comando lo ejecuta el DAEMON del
+# HOST (via el socket montado), y resuelve "$WORKSPACE" como una ruta del
+# HOST -- no del contenedor de Jenkins. Si jenkins_home fuera un volumen con
+# nombre, esa ruta no existiría en el host y Docker montaría una carpeta
+# vacía (el pipeline fallaba con "no existing package-lock.json" porque
+# /app quedaba vacío, no porque faltara el archivo en el repo).
+mkdir -p /var/jenkins_home
+chown -R 1000:1000 /var/jenkins_home
 docker run -d --name jenkins --restart unless-stopped \
   -p 8080:8080 \
-  -v jenkins_home:/var/jenkins_home \
+  -v /var/jenkins_home:/var/jenkins_home \
   -v /var/run/docker.sock:/var/run/docker.sock \
   --group-add "$(stat -c %g /var/run/docker.sock)" \
   jenkins-con-docker
