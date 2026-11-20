@@ -235,3 +235,4 @@ El panel `/admin` incluye dashboard, cartas/categorías/productos, restaurantes,
 - [`docs/OWASP.md`](docs/OWASP.md): mapeo de vulnerabilidades y su remediación.
 - [`cloudflare-worker/README.md`](cloudflare-worker/README.md): capa de seguridad en Cloudflare.
 - [`tests/README.md`](tests/README.md): pruebas funcionales.
+<!-- prueba de integracion con Jenkins -->
