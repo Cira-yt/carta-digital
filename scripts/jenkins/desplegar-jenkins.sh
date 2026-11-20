@@ -133,7 +133,8 @@ mkdir -p /opt/jenkins-imagen
 cat > /opt/jenkins-imagen/Dockerfile <<'DOCKERFILE'
 FROM jenkins/jenkins:lts
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends docker.io && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends docker.io docker-cli && rm -rf /var/lib/apt/lists/*
+RUN docker --version
 USER jenkins
 DOCKERFILE
 docker build -t jenkins-con-docker /opt/jenkins-imagen
