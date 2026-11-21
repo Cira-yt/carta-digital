@@ -26,7 +26,17 @@
 #   todo        verificar → red → jenkins → password
 #   destruir    BORRA la instancia y el security group (pide confirmación).
 #               Esto borra también la configuración de Jenkins (jobs,
-#               credenciales) salvo que hayas hecho un backup aparte.
+#               credenciales) salvo que hayas hecho un backup aparte. La IP
+#               elástica NO se libera (ver liberar-ip).
+#   liberar-ip  libera la IP elástica reservada para Jenkins. Solo cuando el
+#               proyecto termine del todo: mientras tanto conviene dejarla
+#               reservada para no tener que actualizar la URL cada vez.
+#
+# La instancia de Jenkins usa una IP elástica (Elastic IP), no la IP pública
+# dinámica que AWS asigna por defecto. Así, aunque el Lab de AWS Academy se
+# corte y la instancia se detenga/reinicie (lo que normalmente le cambiaría
+# la IP pública), Jenkins sigue en la misma dirección — no hay que avisar
+# ni reconfigurar nada en GitHub ni en los correos guardados.
 # =============================================================================
 set -euo pipefail
 
@@ -54,6 +64,7 @@ cargar_config() {
   MI_IP="${MI_IP:-}"
   SG_NAME="${NAME_PREFIX}-sg"
   INSTANCE_NAME="${NAME_PREFIX}-ec2"
+  EIP_NAME="${NAME_PREFIX}-eip"
 
   [ -n "$MI_IP" ] || error "Definí MI_IP en $CONFIG (tu IP pública + /32). Sin esto Jenkins quedaría abierto a cualquiera o inaccesible."
 }
@@ -116,6 +127,11 @@ instance_id() {
   aws ec2 describe-instances \
     --filters "Name=tag:Name,Values=$INSTANCE_NAME" "Name=instance-state-name,Values=pending,running,stopping,stopped" \
     --query 'Reservations[0].Instances[0].InstanceId' --output text 2>/dev/null | limpio
+}
+
+eip_allocation_id() {
+  aws ec2 describe-addresses --filters "Name=tag:Name,Values=$EIP_NAME" \
+    --query 'Addresses[0].AllocationId' --output text 2>/dev/null | limpio
 }
 
 generar_user_data() { # archivo destino
@@ -192,9 +208,25 @@ cmd_jenkins() {
     aws ec2 wait instance-running --instance-ids "$id"
   fi
   INSTANCE_ID="$id"
-  local ip; ip=$(aws ec2 describe-instances --instance-ids "$id" \
-    --query 'Reservations[0].Instances[0].PublicIpAddress' --output text | limpio)
-  ok "Jenkins va a estar en http://$ip:8080 (puede tardar 1-2 min más en instalar Docker y levantar el contenedor)"
+
+  paso "IP elástica (para que la URL de Jenkins no cambie si el Lab se corta/reinicia)"
+  local alloc; alloc=$(eip_allocation_id)
+  if [ -z "$alloc" ]; then
+    alloc=$(aws ec2 allocate-address --domain vpc \
+      --tag-specifications "ResourceType=elastic-ip,Tags=[{Key=Name,Value=$EIP_NAME},{Key=Proyecto,Value=$NAME_PREFIX}]" \
+      --query AllocationId --output text)
+    ok "IP elástica reservada ($alloc)"
+  else
+    ok "Ya existe ($alloc, se reutiliza)"
+  fi
+  local asociada; asociada=$(aws ec2 describe-addresses --allocation-ids "$alloc" \
+    --query 'Addresses[0].InstanceId' --output text | limpio)
+  if [ "$asociada" != "$id" ]; then
+    aws ec2 associate-address --instance-id "$id" --allocation-id "$alloc" >/dev/null
+  fi
+  local ip; ip=$(aws ec2 describe-addresses --allocation-ids "$alloc" --query 'Addresses[0].PublicIp' --output text | limpio)
+
+  ok "Jenkins va a estar en http://$ip:8080 (puede tardar 1-2 min más en instalar Docker y levantar el contenedor, si es una instancia nueva)"
 }
 
 cmd_password() {
@@ -221,7 +253,9 @@ cmd_estado() {
 cmd_destruir() {
   detectar_vpc
   echo "${c_rojo}Esto BORRA la instancia de Jenkins '$INSTANCE_NAME' y su security group."
-  echo "La configuración de Jenkins (jobs, credenciales) se pierde salvo que hayas hecho un backup.${c_fin}"
+  echo "La configuración de Jenkins (jobs, credenciales) se pierde salvo que hayas hecho un backup."
+  echo "La IP elástica ($EIP_NAME) NO se libera: queda reservada para reusarla en el próximo"
+  echo "'jenkins'/'todo'. Para liberarla también, usá: desplegar-jenkins.sh liberar-ip${c_fin}"
   read -r -p "Para confirmar escribí el prefijo ($NAME_PREFIX): " resp
   [ "$resp" = "$NAME_PREFIX" ] || error "Cancelado."
 
@@ -238,6 +272,17 @@ cmd_destruir() {
   ok "Listo."
 }
 
+cmd_liberar_ip() {
+  local alloc; alloc=$(eip_allocation_id)
+  if [ -z "$alloc" ]; then
+    aviso "No hay ninguna IP elástica reservada para Jenkins."
+    return 0
+  fi
+  paso "Liberando la IP elástica ($EIP_NAME)"
+  aws ec2 release-address --allocation-id "$alloc"
+  ok "Liberada. La próxima vez que corras 'jenkins'/'todo' se va a reservar una IP nueva."
+}
+
 main() {
   local cmd="${1:-todo}"
   cd "$RAIZ"
@@ -249,6 +294,7 @@ main() {
     password)  cmd_password ;;
     estado)    cmd_estado ;;
     destruir)  cmd_destruir ;;
+    liberar-ip) cmd_liberar_ip ;;
     todo)
       cmd_verificar
       cmd_red
