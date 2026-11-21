@@ -122,10 +122,36 @@ Ver el `Jenkinsfile` en la raíz del repo. Resumen:
    hicimos a mano al auditar el historial de git).
 5. `npm audit --omit=dev --audit-level=high` sobre las dependencias de
    producción.
-6. Manda un email con el resultado, los archivos modificados y el link al
-   log completo — tanto si el build es de un PR (antes del merge) como si
-   es de `main` (justo después de que alguien mergeó).
+6. **OWASP Dependency-Check** sobre las dependencias de producción: a
+   diferencia de `npm audit` (rápido, específico para paquetes de npm, base
+   de GitHub Advisory Database), este consulta la base NVD completa y
+   genera un reporte **HTML** detallado — tabla de dependencias, qué CVE
+   tiene cada una, severidad, puntaje CVSS y referencias — pensado como
+   evidencia para mostrar, no solo como pass/fail. Por eso esta etapa **no
+   hace fallar el build** por sí sola (puede dar falsos positivos por cómo
+   identifica las librerías); el reporte igual se adjunta en HTML al email
+   del paso 7, y un resumen de una línea (cuántas vulnerabilidades y de qué
+   severidad) se agrega al cuerpo del correo.
+
+   **Paso opcional pero recomendado** — una API key gratuita de la NVD
+   acelera mucho la descarga/actualización de su base de CVEs (sin ella, el
+   límite de peticiones anónimas la hace lenta, sobre todo la primera vez
+   que corre en una instancia de Jenkins nueva). Para configurarla:
+   1. Pedila gratis en <https://nvd.nist.gov/developers/request-an-api-key>
+      (llega por email, sin costo).
+   2. En Jenkins: Manage Jenkins → System → "Global properties" → activar
+      "Environment variables" → agregar `NVD_API_KEY` con el valor de la
+      key.
+
+   Esta variable es opcional: si no la configurás, la etapa igual corre
+   (solo un poco más lenta la primera vez). No es un "credential" de
+   Jenkins a propósito — así nunca puede romper el pipeline entero si falta.
+7. Manda un email con el resultado, los archivos modificados y el link al
+   log completo (y el reporte de Dependency-Check adjunto en HTML) — tanto
+   si el build es de un PR (antes del merge) como si es de `main` (justo
+   después de que alguien mergeó).
 
 Si cualquiera de los pasos 2-5 falla, el pipeline termina en rojo, el check
 del PR queda en rojo, y GitHub bloquea el botón de "Merge" aunque ya haya
-una aprobación.
+una aprobación (el paso 6, Dependency-Check, es informativo y no bloquea
+por sí solo — ver más arriba).
