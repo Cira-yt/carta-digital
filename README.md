@@ -238,4 +238,6 @@ El panel `/admin` incluye dashboard, cartas/categorías/productos, restaurantes,
 
 
 ## Prueba de jenkins
- 21/11/2026 /
+ sano 21/11/2026
+
+ no sano res.send("<div>Hola " + req.query.nombre + "</div>");
