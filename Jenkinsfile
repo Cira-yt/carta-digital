@@ -89,6 +89,42 @@ pipeline {
         '''
       }
     }
+
+    // Complementa a npm audit (arriba): npm audit es rapido y especifico
+    // para paquetes de npm; esta etapa consulta la base NVD completa y
+    // genera un reporte HTML/JSON detallado por cada hallazgo (CVE,
+    // severidad, CVSS) que se adjunta al email al final del pipeline (ver
+    // el bloque "post" mas abajo) — pensado para usarse como evidencia,
+    // no solo como pass/fail. A diferencia de las otras etapas de
+    // seguridad, esta NO hace fallar el build por si sola (Dependency-Check
+    // puede marcar falsos positivos por como identifica las librerias): si
+    // mas adelante se quiere que tambien bloquee el merge, se le puede
+    // agregar el flag --failOnCVSS <puntaje> mas abajo.
+    stage('Seguridad: reporte de dependencias (OWASP Dependency-Check)') {
+      steps {
+        sh '''
+          rm -rf reporte-dependencias && mkdir -p reporte-dependencias
+          NVD_ARGS=""
+          if [ -n "${NVD_API_KEY:-}" ]; then
+            NVD_ARGS="--nvdApiKey $NVD_API_KEY"
+          fi
+          docker run --rm \
+            -v "$WORKSPACE:/src" \
+            -v dependency-check-data:/usr/share/dependency-check/data \
+            owasp/dependency-check:latest \
+            --scan /src --out /src/reporte-dependencias \
+            --format HTML --format JSON \
+            --project "Carta Digital" \
+            --exclude "**/node_modules/**" \
+            $NVD_ARGS
+        '''
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'reporte-dependencias/*', allowEmptyArchive: true
+        }
+      }
+    }
   }
 
   post {
@@ -113,6 +149,20 @@ pipeline {
           : "  (no se detectaron archivos modificados)"
 
         def paso = currentBuild.currentResult == 'SUCCESS'
+
+        // Resumen del reporte de OWASP Dependency-Check (una linea,
+        // "<total>|<severidad: cantidad, ...>") para mostrar en el cuerpo
+        // del email sin tener que abrir el adjunto HTML. Si la etapa no
+        // llego a correr (ej. fallo algo antes), igual se intenta leer el
+        // reporte por si quedo de un intento anterior; si no hay nada,
+        // el script de resumen avisa "el reporte no se generó".
+        def depResumenCrudo = sh(
+          script: 'docker run --rm -v "$WORKSPACE:/app" -w /app "$IMAGEN_NODE" node scripts/jenkins/resumen-dependency-check.js 2>/dev/null || echo "0|no se pudo leer el reporte"',
+          returnStdout: true
+        ).trim()
+        def depPartes = depResumenCrudo.tokenize('|')
+        def depTotal = depPartes.size() > 0 ? depPartes[0] : '0'
+        def depDetalle = depPartes.size() > 1 ? depPartes[1] : 'sin datos'
 
         // Resumen en lenguaje simple: pensado para que lo pueda leer
         // cualquiera, no solo alguien del equipo tecnico.
@@ -145,7 +195,11 @@ seguir adelante."""
         emailext(
           to: 'carlos0tapi@gmail.com',
           subject: "[Carta Digital] ${paso ? '✅ Todo OK' : '⚠️ Hay un problema'} — ${esPR ? 'PR #' + env.CHANGE_ID : 'rama ' + env.BRANCH_NAME}",
+          attachmentsPattern: 'reporte-dependencias/dependency-check-report.html',
           body: """${resumen}
+
+Reporte de dependencias (OWASP Dependency-Check): ${depTotal} vulnerabilidad(es) encontradas (${depDetalle}).
+Este control es informativo, no bloquea el merge por sí solo — el reporte completo, con el detalle de cada hallazgo (CVE, severidad, librería afectada), va adjunto a este correo en HTML (se abre en cualquier navegador).
 
 Archivos que cambiaron en este envío:
 ${listaArchivos}
