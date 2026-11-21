@@ -6,6 +6,7 @@ import { csrfToken } from "./middlewares/csrf";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 import { router } from "./routes";
 import { adminRouter } from "./routes/admin";
+import { S3_FOTOS_BUCKET } from "./middlewares/upload";
 
 export function createApp(): Express {
   const app = express();
@@ -34,6 +35,26 @@ export function createApp(): Express {
   app.use(express.static(path.join(__dirname, "public")));
   // Assets de la SPA de React (JS/CSS con hash, ver frontend/vite.config.ts).
   app.use(express.static(path.join(__dirname, "public-spa")));
+
+  // Fotos de platos/restaurantes subidas desde el panel de administración:
+  // viven en S3, no en el disco de la instancia (ver middlewares/upload.ts).
+  // Las fotos de ejemplo que sí vienen con el repo (src/public/imagenes/...)
+  // ya las sirvió el express.static de arriba; esto es el fallback para las
+  // que no están en disco porque se subieron después, por un admin: mismo
+  // URL de siempre (/imagenes/cod{id}/{archivo}), redirigido al objeto real
+  // en S3, para no tener que tocar las vistas ni el frontend.
+  app.get("/imagenes/:carpeta/:archivo", (req, res, next) => {
+    const { carpeta, archivo } = req.params;
+    if (!S3_FOTOS_BUCKET || !/^cod\d+$/.test(carpeta) || archivo.includes("/") || archivo.includes("..")) {
+      next();
+      return;
+    }
+    const region = process.env.AWS_REGION || "us-east-1";
+    res.redirect(
+      302,
+      `https://${S3_FOTOS_BUCKET}.s3.${region}.amazonaws.com/${carpeta}/${encodeURIComponent(archivo)}`
+    );
+  });
 
   // Usado por Docker/Jenkins para verificar que la app está viva.
   app.get("/health", (_req, res) => res.status(200).json({ ok: true }));

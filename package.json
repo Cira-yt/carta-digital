@@ -17,6 +17,8 @@
     "test": "jest --runInBand"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1175.0",
+    "@aws-sdk/lib-storage": "^3.1175.0",
     "bcryptjs": "^2.4.3",
     "connect-pg-simple": "^9.0.1",
     "dotenv": "^16.4.5",
