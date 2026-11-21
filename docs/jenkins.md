@@ -1,6 +1,13 @@
 # Jenkins — verificador de Pull Requests
 
 <!-- Nota de prueba (PR de verificación): este comentario no cambia nada del
+     comportamiento del pipeline. Es solo para generar un commit real y abrir
+     un segundo PR de prueba, ahora que la instancia de Jenkins volvió a estar
+     arriba, para confirmar que el correo con el reporte de Dependency-Check
+     llega adjunto y es legible (con la NVD_API_KEY ya configurada). Se puede
+     borrar este comentario cuando se cierre ese PR de prueba. -->
+
+<!-- Nota de prueba (PR de verificación): este comentario no cambia nada del
      comportamiento del pipeline. Solo sirve para generar un commit real y
      así poder abrir un Pull Request de prueba, que Jenkins va a detectar y
      correr completo (incluyendo las etapas de Semgrep y Dependency-Check),
