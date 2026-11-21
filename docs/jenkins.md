@@ -44,6 +44,12 @@ por SSH/EC2 Instance Connect.
 > destruyas entre pruebas o perdés toda la configuración de Jenkins (jobs,
 > credenciales, historial). `scripts/jenkins/desplegar-jenkins.sh destruir`
 > solo está pensado para cuando termines de verdad con el proyecto.
+>
+> La instancia usa una **IP elástica** (no la IP pública dinámica que AWS
+> asigna por defecto): si el Lab de AWS Academy se corta y la instancia se
+> reinicia, la URL de Jenkins **no cambia**. La IP elástica sobrevive incluso
+> a un `destruir` (se reutiliza en el próximo `jenkins`/`todo`); para
+> liberarla del todo usá `desplegar-jenkins.sh liberar-ip`.
 
 ## 2. Primer login y plugins
 
