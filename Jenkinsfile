@@ -80,6 +80,15 @@ pipeline {
         '''
       }
     }
+
+    stage('Seguridad: OWASP Top 10 (Semgrep)') {
+      steps {
+        sh '''
+          docker run --rm -v "$WORKSPACE:/src" returntocorp/semgrep:latest \
+            semgrep scan --config p/owasp-top-ten --error --metrics=off /src
+        '''
+      }
+    }
   }
 
   post {
@@ -110,12 +119,14 @@ pipeline {
         def resumen = paso
           ? """RESULTADO: todo en orden ✅
 
-Se revisó automáticamente el código de ${alcance} y pasó los 4 controles:
+Se revisó automáticamente el código de ${alcance} y pasó los 5 controles:
   ✔ El proyecto compila sin errores
   ✔ Las pruebas automáticas pasaron (incluyen seguridad: inicio de sesión,
     permisos de administrador, protección contra ataques comunes)
   ✔ No se encontraron contraseñas ni claves secretas filtradas en el código
   ✔ No se detectaron librerías externas con vulnerabilidades conocidas
+  ✔ No se encontraron patrones de riesgo del OWASP Top 10 (inyección,
+    configuración insegura, etc.) en el código
 
 No hace falta ninguna acción: este cambio está listo para que una persona
 del equipo lo revise y, si corresponde, lo apruebe en GitHub."""
@@ -123,8 +134,9 @@ del equipo lo revise y, si corresponde, lo apruebe en GitHub."""
 
 Se revisó automáticamente el código de ${alcance} y uno de los controles
 NO pasó (puede ser que el código no compile, que alguna prueba automática
-haya fallado, que se haya filtrado una contraseña/clave, o que una
-librería externa tenga una vulnerabilidad conocida).
+haya fallado, que se haya filtrado una contraseña/clave, que una librería
+externa tenga una vulnerabilidad conocida, o que se haya detectado un
+patrón de riesgo del OWASP Top 10).
 
 Por ahora este cambio no debería aprobarse ni mergearse. Alguien del
 equipo técnico tiene que revisar el detalle (link más abajo) antes de
