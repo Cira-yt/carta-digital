@@ -90,26 +90,59 @@ pipeline {
         // de la propia rama main — osea, corrio DESPUES de un merge.
         def esPR = env.CHANGE_ID != null
         def alcance = esPR
-          ? "Pull Request #${env.CHANGE_ID} (${env.CHANGE_BRANCH} -> ${env.CHANGE_TARGET})"
-          : "rama ${env.BRANCH_NAME} (post-merge)"
+          ? "el Pull Request #${env.CHANGE_ID} (de la rama '${env.CHANGE_BRANCH}' hacia '${env.CHANGE_TARGET}')"
+          : "la rama '${env.BRANCH_NAME}' (recien actualizada por un merge)"
 
         def cambios = sh(
           script: esPR
-            ? "git diff --name-status origin/${env.CHANGE_TARGET}...HEAD 2>/dev/null || true"
-            : "git diff --name-status HEAD~1 HEAD 2>/dev/null || true",
+            ? "git diff --name-only origin/${env.CHANGE_TARGET}...HEAD 2>/dev/null || true"
+            : "git diff --name-only HEAD~1 HEAD 2>/dev/null || true",
           returnStdout: true
         ).trim()
+        def listaArchivos = cambios
+          ? cambios.readLines().collect { "  - ${it}" }.join("\n")
+          : "  (no se detectaron archivos modificados)"
+
+        def paso = currentBuild.currentResult == 'SUCCESS'
+
+        // Resumen en lenguaje simple: pensado para que lo pueda leer
+        // cualquiera, no solo alguien del equipo tecnico.
+        def resumen = paso
+          ? """RESULTADO: todo en orden ✅
+
+Se revisó automáticamente el código de ${alcance} y pasó los 4 controles:
+  ✔ El proyecto compila sin errores
+  ✔ Las pruebas automáticas pasaron (incluyen seguridad: inicio de sesión,
+    permisos de administrador, protección contra ataques comunes)
+  ✔ No se encontraron contraseñas ni claves secretas filtradas en el código
+  ✔ No se detectaron librerías externas con vulnerabilidades conocidas
+
+No hace falta ninguna acción: este cambio está listo para que una persona
+del equipo lo revise y, si corresponde, lo apruebe en GitHub."""
+          : """RESULTADO: encontramos un problema ⚠️
+
+Se revisó automáticamente el código de ${alcance} y uno de los controles
+NO pasó (puede ser que el código no compile, que alguna prueba automática
+haya fallado, que se haya filtrado una contraseña/clave, o que una
+librería externa tenga una vulnerabilidad conocida).
+
+Por ahora este cambio no debería aprobarse ni mergearse. Alguien del
+equipo técnico tiene que revisar el detalle (link más abajo) antes de
+seguir adelante."""
 
         emailext(
           to: 'carlos0tapi@gmail.com',
-          subject: "[Carta Digital] ${currentBuild.currentResult}: ${alcance}",
-          body: """Resultado: ${currentBuild.currentResult}
-Alcance: ${alcance}
+          subject: "[Carta Digital] ${paso ? '✅ Todo OK' : '⚠️ Hay un problema'} — ${esPR ? 'PR #' + env.CHANGE_ID : 'rama ' + env.BRANCH_NAME}",
+          body: """${resumen}
+
+Archivos que cambiaron en este envío:
+${listaArchivos}
+
+-------------------------------------------
+Detalles técnicos (para el equipo de desarrollo):
+Resultado: ${currentBuild.currentResult}
 Commit: ${env.GIT_COMMIT}
 Log completo: ${env.BUILD_URL}console
-
-Archivos modificados:
-${cambios ?: '(sin cambios detectados)'}
 """
         )
       }
