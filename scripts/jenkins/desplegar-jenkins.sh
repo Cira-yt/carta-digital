@@ -23,6 +23,9 @@
 #   jenkins     crea la instancia EC2 e instala Jenkins (Docker)
 #   password    muestra la contraseña inicial de administrador de Jenkins
 #   estado      IP pública y estado de la instancia
+#   iniciar     si la instancia está "stopped" (ej: se cortó el Lab de AWS
+#               Academy), la arranca de nuevo y muestra la URL. Si ya está
+#               "running", no hace nada y solo informa.
 #   todo        verificar → red → jenkins → password
 #   destruir    BORRA la instancia y el security group (pide confirmación).
 #               Esto borra también la configuración de Jenkins (jobs,
@@ -37,6 +40,14 @@
 # corte y la instancia se detenga/reinicie (lo que normalmente le cambiaría
 # la IP pública), Jenkins sigue en la misma dirección — no hay que avisar
 # ni reconfigurar nada en GitHub ni en los correos guardados.
+#
+# OJO: "misma dirección" no significa "sigue prendida". Cuando se acaba la
+# sesión del Lab de AWS Academy (o la cerrás vos manualmente), AWS AUTOMÁTICAMENTE
+# detiene ("stopped") esta instancia de Jenkins. A diferencia de las instancias
+# de la app (que están en un Auto Scaling Group y se vuelven a levantar solas),
+# la de Jenkins es independiente — nadie la arranca de nuevo por vos. Si Jenkins
+# deja de responder, corré "estado" para confirmar que está "stopped" y después
+# "iniciar" para prenderla otra vez (ver docs/jenkins.md).
 # =============================================================================
 set -euo pipefail
 
@@ -250,6 +261,38 @@ cmd_estado() {
     --query 'Reservations[0].Instances[0].{Estado:State.Name,IP:PublicIpAddress}' --output table
 }
 
+cmd_iniciar() {
+  local id; id=$(instance_id)
+  [ -n "$id" ] || error "No encontré la instancia de Jenkins. Corré primero: desplegar-jenkins.sh jenkins"
+
+  paso "Estado actual de la instancia"
+  local estado; estado=$(aws ec2 describe-instances --instance-ids "$id" \
+    --query 'Reservations[0].Instances[0].State.Name' --output text | limpio)
+  ok "$id está '$estado'"
+
+  case "$estado" in
+    running)
+      aviso "Ya está corriendo, no hay nada que arrancar."
+      ;;
+    stopped)
+      paso "Arrancando la instancia (esto pasa cada vez que se corta el Lab de AWS Academy)"
+      aws ec2 start-instances --instance-ids "$id" >/dev/null
+      echo "  Esperando a que arranque (1-2 min)..."
+      aws ec2 wait instance-running --instance-ids "$id"
+      ok "Instancia corriendo de nuevo."
+      ;;
+    *)
+      error "Estado '$estado' no manejado automáticamente (¿pending/stopping?). Esperá un poco y volvé a correr 'estado'."
+      ;;
+  esac
+
+  local alloc; alloc=$(eip_allocation_id)
+  if [ -n "$alloc" ]; then
+    local ip; ip=$(aws ec2 describe-addresses --allocation-ids "$alloc" --query 'Addresses[0].PublicIp' --output text | limpio)
+    ok "Jenkins debería estar en http://$ip:8080 (puede tardar 1-2 min más en responder tras arrancar)"
+  fi
+}
+
 cmd_destruir() {
   detectar_vpc
   echo "${c_rojo}Esto BORRA la instancia de Jenkins '$INSTANCE_NAME' y su security group."
@@ -293,6 +336,7 @@ main() {
     jenkins)   cmd_jenkins ;;
     password)  cmd_password ;;
     estado)    cmd_estado ;;
+    iniciar)   cmd_iniciar ;;
     destruir)  cmd_destruir ;;
     liberar-ip) cmd_liberar_ip ;;
     todo)
