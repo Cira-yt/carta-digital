@@ -102,4 +102,31 @@ describe("Panel de administración", () => {
     );
     expect(nombresDeVuelta).toContain("Ensalada Cesar");
   });
+
+  it("el admin puede crear un restaurante nuevo (el formulario viaja como multipart/form-data aunque no incluya foto)", async () => {
+    const agent = request.agent(app);
+    await loginAdmin(agent);
+
+    const form = await agent.get("/admin/restaurantes/nuevo");
+    const csrf = csrfDeFormulario(form.text);
+
+    // Se usa .field() (en vez de .type("form").send()) para reproducir
+    // exactamente el enctype="multipart/form-data" del formulario real: sin
+    // multer corriendo antes de csrfValidar, req.body llega vacío y el
+    // csrfToken se rechaza como "ausente" aunque se haya enviado bien.
+    const res = await agent
+      .post("/admin/restaurantes")
+      .field("csrfToken", csrf)
+      .field("nombre", "Restaurante de Prueba QA")
+      .field("rut", "11111111-1")
+      .field("fono", "912345678")
+      .field("email", "prueba@test.local")
+      .field("calle", "Calle Falsa")
+      .field("numero", "123")
+      .field("comuna", "La Serena")
+      .field("region", "Coquimbo");
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toMatch(/^\/admin\/restaurantes\?ok=creado&id=\d+$/);
+  });
 });

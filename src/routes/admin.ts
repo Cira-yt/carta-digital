@@ -57,7 +57,9 @@ function conManejoDeSubida(req: Request, res: Response, next: NextFunction): voi
 function conManejoDeSubidaRestaurante(req: Request, res: Response, next: NextFunction): void {
   uploadFotoRestaurante(req, res, (err: unknown) => {
     if (err) {
-      res.redirect(`/admin/restaurantes/${req.params.id}/editar?error=foto`);
+      const idRestaurante = idValido(req.params.id);
+      const destino = idRestaurante ? `/admin/restaurantes/${idRestaurante}/editar` : "/admin/restaurantes/nuevo";
+      res.redirect(`${destino}?error=foto`);
       return;
     }
     next();
@@ -87,7 +89,12 @@ adminRouter.post("/items/:id/eliminar", csrfValidar, eliminarItemHandler);
 // --- Gestión de restaurantes (multi-tenant) ---
 adminRouter.get("/restaurantes", listarRestaurantesHandler);
 adminRouter.get("/restaurantes/nuevo", nuevoRestauranteForm);
-adminRouter.post("/restaurantes", csrfValidar, crearRestauranteHandler);
+// El formulario de "nuevo restaurante" se envía como multipart/form-data
+// (misma plantilla que "editar", que sí tiene campo de foto) aunque no
+// incluya el campo de foto: sin multer antes, express no parsea el body y
+// req.body (con el csrfToken) llega vacío, por eso csrfValidar lo rechazaba
+// como "ausente". Multer sí debe correr antes que csrfValidar.
+adminRouter.post("/restaurantes", conManejoDeSubidaRestaurante, csrfValidar, crearRestauranteHandler);
 adminRouter.get("/restaurantes/:id/editar", editarRestauranteForm);
 adminRouter.post("/restaurantes/:id", conManejoDeSubidaRestaurante, csrfValidar, actualizarRestauranteHandler);
 
