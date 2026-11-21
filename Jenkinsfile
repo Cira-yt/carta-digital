@@ -100,6 +100,15 @@ pipeline {
     // puede marcar falsos positivos por como identifica las librerias): si
     // mas adelante se quiere que tambien bloquee el merge, se le puede
     // agregar el flag --failOnCVSS <puntaje> mas abajo.
+    //
+    // IMPORTANTE: la NVD_API_KEY (ver docs/jenkins.md) NO es solo una
+    // optimizacion de velocidad — desde que la NVD exige la key para
+    // cualquier consulta (incluida la primera descarga de su base de
+    // CVEs), sin ella esta etapa literalmente no tiene datos para
+    // analizar. El "|| true" de abajo evita que esto tumbe el pipeline
+    // completo (consistente con que esta etapa es informativa), pero
+    // sin la key el reporte va a salir vacio o directamente no se va a
+    // generar — no es un bug, es la etapa degradando con gracia.
     stage('Seguridad: reporte de dependencias (OWASP Dependency-Check)') {
       steps {
         sh '''
@@ -116,7 +125,7 @@ pipeline {
             --format HTML --format JSON \
             --project "Carta Digital" \
             --exclude "**/node_modules/**" \
-            $NVD_ARGS
+            $NVD_ARGS || echo "OWASP Dependency-Check no pudo terminar (ver log arriba) — no bloquea el pipeline, es informativo."
         '''
       }
       post {

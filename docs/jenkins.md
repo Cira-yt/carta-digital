@@ -142,19 +142,22 @@ Ver el `Jenkinsfile` en la raíz del repo. Resumen:
    del paso 8, y un resumen de una línea (cuántas vulnerabilidades y de qué
    severidad) se agrega al cuerpo del correo.
 
-   **Paso opcional pero recomendado** — una API key gratuita de la NVD
-   acelera mucho la descarga/actualización de su base de CVEs (sin ella, el
-   límite de peticiones anónimas la hace lenta, sobre todo la primera vez
-   que corre en una instancia de Jenkins nueva). Para configurarla:
-   1. Pedila gratis en <https://nvd.nist.gov/developers/request-an-api-key>
+   **Paso necesario, no solo una optimización** — la NVD cambió su
+   política y ahora exige una API key para cualquier consulta a su base de
+   CVEs, incluida la primera descarga. Sin la key, esta etapa no tiene
+   datos para analizar y el reporte sale vacío (el `|| echo "..."` del
+   `Jenkinsfile` evita que esto rompa el pipeline completo, pero el
+   reporte en sí no sirve de nada sin la key). Es gratis y rápido de
+   conseguir:
+   1. Pedila en <https://nvd.nist.gov/developers/request-an-api-key>
       (llega por email, sin costo).
    2. En Jenkins: Manage Jenkins → System → "Global properties" → activar
       "Environment variables" → agregar `NVD_API_KEY` con el valor de la
       key.
 
-   Esta variable es opcional: si no la configurás, la etapa igual corre
-   (solo un poco más lenta la primera vez). No es un "credential" de
-   Jenkins a propósito — así nunca puede romper el pipeline entero si falta.
+   A propósito es una variable de entorno global y no un "credential" de
+   Jenkins — así, aunque falte, nunca rompe el pipeline entero (solo deja
+   esta etapa sin datos útiles, nunca bloquea el merge).
 8. Manda un email con el resultado, los archivos modificados y el link al
    log completo (y el reporte de Dependency-Check adjunto en HTML) — tanto
    si el build es de un PR (antes del merge) como si es de `main` (justo
