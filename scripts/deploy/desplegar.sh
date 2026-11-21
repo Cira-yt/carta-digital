@@ -27,6 +27,11 @@
 #                nadie se salte el Worker pegándole directo al ALB.
 #   base-datos   crea la instancia RDS PostgreSQL
 #   app          Target Group + Load Balancer + Launch Template + Auto Scaling
+#                (incluye crear el bucket S3 de fotos si todavía no existe)
+#   fotos        crea (si hace falta) el bucket S3 de fotos de platos/
+#                restaurantes y le aplica la política de lectura pública.
+#                Lo corre "app" solo, así que normalmente no hace falta
+#                invocarlo aparte.
 #   cloudflare   automatiza Cloudflare por API (ver CF_* abajo), o si no
 #                están esas variables, imprime los pasos manuales
 #   estado       muestra el estado de RDS, el Auto Scaling y la salud en el ALB
@@ -35,9 +40,11 @@
 #                Template, security groups y (si CF_API_TOKEN/CF_ACCOUNT_ID
 #                están configurados) el Worker + KV namespace de Cloudflare.
 #                La RDS NO se toca (para no perder los datos cargados en la
-#                app entre una prueba y otra). Pide confirmación.
+#                app entre una prueba y otra), y el bucket S3 de fotos
+#                TAMPOCO (para no perder las fotos subidas). Pide confirmación.
 #   destruir-todo  Lo mismo que "destruir", y ADEMÁS borra la RDS con sus
-#                datos (irreversible). Pide una confirmación más exigente.
+#                datos (irreversible). El bucket de fotos sigue sin tocarse.
+#                Pide una confirmación más exigente.
 #
 # Variables útiles:
 #   SALTAR_DOCKER=1          en "todo", omite la prueba local de Docker (ej. si
@@ -80,6 +87,20 @@ cargar_config() {
   DB_USER="${DB_USER:-carta_app}"
   SESSION_SECURE_COOKIE="${SESSION_SECURE_COOKIE:-false}"
   GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+
+  # Bucket S3 donde se guardan las fotos de platos/restaurantes subidas desde
+  # el panel de admin (ver src/middlewares/upload.ts). Si no se define, se
+  # arma más adelante como "${NAME_PREFIX}-fotos-<id-de-cuenta-aws>" (los
+  # nombres de bucket son únicos a nivel global, por eso se les agrega el
+  # id de cuenta). Es un recurso aparte del ciclo de vida de las instancias:
+  # "destruir" y "destruir-todo" nunca lo tocan ni borran su contenido.
+  S3_FOTOS_BUCKET="${S3_FOTOS_BUCKET:-}"
+  # Instance profile de AWS Academy Learner Lab que le da a la instancia EC2
+  # permiso para hablar con S3 (entre otros servicios) sin tener que manejar
+  # claves de acceso. Si usás una cuenta de AWS propia (no Academy), armá tu
+  # propio rol/instance profile con permiso s3:PutObject/GetObject/DeleteObject
+  # sobre el bucket de fotos y poné su nombre acá.
+  IAM_INSTANCE_PROFILE="${IAM_INSTANCE_PROFILE:-LabInstanceProfile}"
 
   # Contraseñas de los usuarios de prueba (admin/cliente) que siembra db/init.sql.
   # Si no se definen en deploy.env, se genera una al azar para este despliegue
@@ -226,6 +247,65 @@ alb_dns() {
 tg_arn() {
   aws elbv2 describe-target-groups --names "$TG_NAME" \
     --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null | limpio || true
+}
+
+# Completa S3_FOTOS_BUCKET si no vino seteado en deploy.env (una sola vez:
+# si ya tiene valor, de deploy.env o de una corrida anterior en esta misma
+# sesión de shell, no lo pisa).
+resolver_bucket_fotos() {
+  if [ -z "$S3_FOTOS_BUCKET" ]; then
+    local cuenta; cuenta=$(aws sts get-caller-identity --query Account --output text | limpio)
+    S3_FOTOS_BUCKET="${NAME_PREFIX}-fotos-${cuenta}"
+  fi
+}
+
+# Crea (si no existe) el bucket S3 de fotos y lo deja con lectura pública
+# solo para los objetos (sin listado del bucket), que es el mismo nivel de
+# acceso que ya tenían las fotos cuando vivían en el disco servidas por
+# express.static: cualquiera con el link las ve, nadie puede listar ni
+# escribir. Idempotente: se puede correr de nuevo sin romper nada.
+cmd_bucket_fotos() {
+  resolver_bucket_fotos
+  paso "Bucket S3 de fotos ($S3_FOTOS_BUCKET)"
+  if aws s3api head-bucket --bucket "$S3_FOTOS_BUCKET" 2>/dev/null; then
+    ok "Ya existe (se reutiliza)"
+  else
+    if [ "$AWS_REGION" = "us-east-1" ]; then
+      aws s3api create-bucket --bucket "$S3_FOTOS_BUCKET" >/dev/null
+    else
+      aws s3api create-bucket --bucket "$S3_FOTOS_BUCKET" \
+        --create-bucket-configuration "LocationConstraint=$AWS_REGION" >/dev/null
+    fi
+    ok "Bucket creado"
+  fi
+
+  aws s3api put-public-access-block --bucket "$S3_FOTOS_BUCKET" --public-access-block-configuration \
+    "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=false,RestrictPublicBuckets=false" >/dev/null
+
+  local politica
+  politica=$(cat <<JSON
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Sid": "LecturaPublicaSoloDeObjetos",
+    "Effect": "Allow",
+    "Principal": "*",
+    "Action": "s3:GetObject",
+    "Resource": "arn:aws:s3:::${S3_FOTOS_BUCKET}/*"
+  }]
+}
+JSON
+)
+  # Justo después de crear el bucket, el "block public access" puede tardar
+  # unos segundos en propagarse; reintenta unas pocas veces antes de darse
+  # por vencido.
+  local intento=0
+  until aws s3api put-bucket-policy --bucket "$S3_FOTOS_BUCKET" --policy "$politica" 2>/dev/null; do
+    intento=$((intento + 1))
+    [ "$intento" -lt 6 ] || error "No pude aplicar la política de lectura pública al bucket $S3_FOTOS_BUCKET."
+    sleep 5
+  done
+  ok "Lectura pública habilitada (solo s3:GetObject, sin listado del bucket)"
 }
 
 # =============================================================================
@@ -406,7 +486,7 @@ generar_user_data() { # archivo destino
     echo '# --- valores inyectados por scripts/deploy/desplegar.sh ---'
     for v in GITHUB_REPO GITHUB_BRANCH GITHUB_TOKEN DB_HOST DB_NAME DB_USER DB_PASSWORD \
              RDS_MASTER_USER RDS_MASTER_PASSWORD SESSION_SECRET SESSION_SECURE_COOKIE \
-             ADMIN_SEED_PASSWORD CLIENTE_SEED_PASSWORD; do
+             ADMIN_SEED_PASSWORD CLIENTE_SEED_PASSWORD S3_FOTOS_BUCKET AWS_REGION; do
       printf '%s=%q\n' "$v" "${!v}"
     done
     cat <<'CUERPO'
@@ -463,6 +543,8 @@ PGPASSWORD=$DB_PASSWORD
 PGSSL=true
 SESSION_SECRET=$SESSION_SECRET
 SESSION_SECURE_COOKIE=$SESSION_SECURE_COOKIE
+S3_FOTOS_BUCKET=$S3_FOTOS_BUCKET
+AWS_REGION=$AWS_REGION
 ENVEOF
 chmod 600 .env.prod
 # docker compose valida el archivo completo: .env.dev/.env.qa solo tienen que existir.
@@ -478,6 +560,7 @@ cmd_app() {
   DB_HOST="${DB_HOST:-$(rds_endpoint)}"
   [ -n "$DB_HOST" ] || error "No encontré la RDS '$RDS_INSTANCE_ID'. Corré primero: desplegar.sh base-datos"
   requerir RDS_MASTER_PASSWORD DB_PASSWORD SESSION_SECRET GITHUB_REPO GITHUB_BRANCH
+  cmd_bucket_fotos
 
   if [ "$ADMIN_SEED_PASSWORD_GENERADA" = 1 ]; then
     aviso "Contraseña del usuario admin de la app (admin@gmail.com) generada para este despliegue: $ADMIN_SEED_PASSWORD"
@@ -527,14 +610,17 @@ cmd_app() {
   generar_user_data "$ud"
   local linea_key=""
   [ -z "${KEY_NAME:-}" ] || linea_key="\"KeyName\": \"$KEY_NAME\","
+  local linea_perfil=""
+  [ -z "${IAM_INSTANCE_PROFILE:-}" ] || linea_perfil="\"IamInstanceProfile\": {\"Name\": \"$IAM_INSTANCE_PROFILE\"},"
   local datos_lt
   datos_lt=$(cat <<JSON
 {
   "ImageId": "$AMI_ID",
   "InstanceType": "$INSTANCE_TYPE",
   $linea_key
+  $linea_perfil
   "SecurityGroupIds": ["$APP_SG_ID"],
-  "MetadataOptions": {"HttpTokens": "required", "HttpEndpoint": "enabled"},
+  "MetadataOptions": {"HttpTokens": "required", "HttpEndpoint": "enabled", "HttpPutResponseHopLimit": 2},
   "TagSpecifications": [{"ResourceType": "instance", "Tags": [
     {"Key": "Name", "Value": "${NAME_PREFIX}-app"}, {"Key": "Proyecto", "Value": "$NAME_PREFIX"}]}],
   "UserData": "$(base64 -w0 "$ud" 2>/dev/null || base64 "$ud" | tr -d '\n')"
@@ -736,6 +822,13 @@ cmd_estado() {
       --query 'TargetHealthDescriptions[].{Instancia:Target.Id,Estado:TargetHealth.State,Motivo:TargetHealth.Reason}' --output table
     echo "  URL: http://$(alb_dns)"
   else aviso "No existe"; fi
+  paso "Bucket S3 de fotos"
+  resolver_bucket_fotos
+  if aws s3api head-bucket --bucket "$S3_FOTOS_BUCKET" 2>/dev/null; then
+    ok "$S3_FOTOS_BUCKET"
+  else
+    aviso "No existe todavía ($S3_FOTOS_BUCKET) — lo crea 'app'/'fotos'/'todo'"
+  fi
 }
 
 cmd_destruir() {
@@ -746,6 +839,8 @@ cmd_destruir() {
   echo "Launch Template, los security groups${mensaje_cf}.${c_fin}"
   echo "La base RDS '$RDS_INSTANCE_ID' NO se toca (así no perdés los datos cargados"
   echo "en la app). Para borrarla también, usá: desplegar.sh destruir-todo"
+  echo "El bucket S3 de fotos tampoco se toca nunca (ni acá ni en destruir-todo):"
+  echo "las fotos subidas por el admin no se pierden con ningún 'destruir'."
   read -r -p "Para confirmar escribí el prefijo ($NAME_PREFIX): " resp
   [ "$resp" = "$NAME_PREFIX" ] || error "Cancelado."
 
@@ -829,7 +924,9 @@ cmd_destruir_todo() {
   local id; id=$(sg_id "$SG_RDS")
   [ -z "$id" ] || { aws ec2 delete-security-group --group-id "$id" 2>/dev/null || aviso "No se pudo borrar $SG_RDS (reintentá en unos minutos)."; }
 
-  ok "Listo — no quedó nada."
+  ok "Listo — no quedó AWS ni RDS. El bucket S3 de fotos sigue existiendo a propósito"
+  ok "(las fotos no se borran con ningún 'destruir'); si alguna vez querés borrarlo"
+  ok "del todo, hacelo a mano desde la consola de S3 o con 'aws s3 rb --force'."
 }
 
 # =============================================================================
@@ -843,6 +940,7 @@ main() {
     red)        cmd_red ;;
     base-datos) cmd_base_datos ;;
     app)        cmd_app ;;
+    fotos)      cmd_bucket_fotos ;;
     cloudflare) cmd_cloudflare ;;
     estado)     cmd_estado ;;
     destruir)      cmd_destruir ;;
