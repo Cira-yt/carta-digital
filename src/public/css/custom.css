@@ -55,8 +55,8 @@ nav > div a.nav-item.nav-link.active:after {
  * el triángulo, no quedaba ninguna forma de saber cuál estaba seleccionada.
  * Se agrega un indicador simple y estable (fondo + línea inferior). */
 #nav-tab a.nav-item.nav-link.active {
-  background: var(--admin-navy, #0b2e4f) !important;
-  box-shadow: inset 0 -3px 0 #d4af37;
+  background: var(--admin-navy, #1c1033) !important;
+  box-shadow: inset 0 -3px 0 var(--admin-accent, #b9872c);
 }
 
 /* El contenedor del producto no debe permitir que su contenido se desborde. */
@@ -72,18 +72,29 @@ nav > div a.nav-item.nav-link.active:after {
 
 /* =======================================================================
  * Panel de administración
+ *
+ * Antes usaba una paleta azul+dorado genérica de "dashboard", sin relación
+ * con el sitio público (rojo marca + crema + navy). Se reemplaza por los
+ * mismos tonos que la carta pública, para que admin y público se sientan
+ * como el mismo producto en vez de una plantilla aparte.
  * ===================================================================== */
 :root {
-  --admin-navy: #0b2e4f;
-  --admin-navy-dark: #081f37;
-  --admin-accent: #d4af37;
-  --admin-bg: #f4f6f9;
-  --admin-border: #e3e7ec;
+  --admin-navy: #1c1033;
+  --admin-navy-dark: #140b26;
+  --admin-brand: #c62a12;
+  --admin-brand-dark: #8f1d0b;
+  --admin-accent: #b9872c;
+  --admin-bg: #f6f1e7;
+  --admin-surface: #fffdf9;
+  --admin-border: #e3d9c6;
+  --admin-text: #241c14;
+  --admin-text-muted: #7a6c56;
 }
 
 .admin-body {
   background: var(--admin-bg);
   min-height: 100vh;
+  color: var(--admin-text);
 }
 
 /* --- Barra superior --- */
@@ -91,6 +102,7 @@ nav > div a.nav-item.nav-link.active:after {
   background: linear-gradient(135deg, var(--admin-navy) 0%, var(--admin-navy-dark) 100%);
   padding: 0.75rem 1.5rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border-bottom: 3px solid var(--admin-brand);
 }
 .admin-bar .admin-brand {
   color: #fff;
@@ -122,14 +134,13 @@ nav > div a.nav-item.nav-link.active:after {
   margin-bottom: 1.75rem;
 }
 .admin-stat-card {
-  background: #fff;
+  background: var(--admin-surface);
   border: 1px solid var(--admin-border);
   border-radius: 10px;
   padding: 1rem 1.25rem;
   display: flex;
   align-items: center;
   gap: 0.9rem;
-  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.04);
 }
 .admin-stat-card .icono {
   width: 42px;
@@ -143,32 +154,48 @@ nav > div a.nav-item.nav-link.active:after {
   background: var(--admin-navy);
   flex-shrink: 0;
 }
-.admin-stat-card.destacados .icono { background: #b8860b; }
-.admin-stat-card.ocultos .icono { background: #6c757d; }
+.admin-stat-card.destacados .icono { background: var(--admin-accent); }
+.admin-stat-card.ocultos .icono { background: var(--admin-text-muted); }
 .admin-stat-card .valor {
   font-size: 1.4rem;
   font-weight: 700;
-  color: #1a2733;
+  color: var(--admin-text);
   line-height: 1.1;
 }
 .admin-stat-card .etiqueta {
   font-size: 0.78rem;
-  color: #6b7785;
+  color: var(--admin-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
+/* La cifra de "Productos" es la que de verdad resume el catálogo: se
+   destaca con la marca en vez de sumar una sexta tarjeta blanca idéntica
+   a las demás (el resto queda deliberadamente más discreto). */
+.admin-stat-card.principal {
+  background: linear-gradient(135deg, var(--admin-brand) 0%, var(--admin-brand-dark) 100%);
+  border-color: transparent;
+}
+.admin-stat-card.principal .icono {
+  background: rgba(255, 255, 255, 0.18);
+}
+.admin-stat-card.principal .valor {
+  color: #fff;
+}
+.admin-stat-card.principal .etiqueta {
+  color: rgba(255, 255, 255, 0.78);
+}
+
 /* --- Tarjeta de carta (acordeón) --- */
 .admin-section {
-  background: #fff;
+  background: var(--admin-surface);
   border: 1px solid var(--admin-border);
   border-radius: 10px;
   margin-bottom: 1rem;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.04);
 }
 .admin-section-header {
-  background: #fff;
+  background: var(--admin-surface);
   padding: 0.85rem 1.25rem;
   font-weight: 600;
   font-size: 1.02rem;
@@ -177,10 +204,10 @@ nav > div a.nav-item.nav-link.active:after {
   align-items: center;
   cursor: pointer;
   border-bottom: 1px solid transparent;
-  color: #1a2733;
+  color: var(--admin-text);
 }
 .admin-section-header:hover {
-  background: #fafbfc;
+  background: var(--admin-bg);
 }
 .admin-section-header .titulo {
   display: flex;
@@ -188,11 +215,11 @@ nav > div a.nav-item.nav-link.active:after {
   gap: 0.6rem;
 }
 .admin-section-header .titulo i {
-  color: var(--admin-navy);
+  color: var(--admin-brand);
 }
 .admin-section-header .chevron {
   transition: transform 0.2s ease;
-  color: #8a94a1;
+  color: var(--admin-text-muted);
 }
 .admin-section-header[aria-expanded="true"] .chevron {
   transform: rotate(180deg);
@@ -206,7 +233,7 @@ nav > div a.nav-item.nav-link.active:after {
   padding: 0.55rem 1.25rem;
   font-weight: 600;
   font-size: 0.88rem;
-  color: #3a4654;
+  color: var(--admin-text);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -223,7 +250,7 @@ nav > div a.nav-item.nav-link.active:after {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #8a94a1;
+  color: var(--admin-text-muted);
   font-weight: 600;
   border-top: none;
   padding: 0.4rem 1.25rem;
@@ -233,15 +260,15 @@ nav > div a.nav-item.nav-link.active:after {
   vertical-align: middle;
 }
 .admin-tabla-items tr:hover td {
-  background: #fafbfc;
+  background: var(--admin-bg);
 }
 .admin-tabla-items .producto-nombre {
   font-weight: 600;
-  color: #1a2733;
+  color: var(--admin-text);
 }
 .admin-tabla-items .producto-desc {
   font-size: 0.8rem;
-  color: #8a94a1;
+  color: var(--admin-text-muted);
 }
 .admin-precio {
   font-variant-numeric: tabular-nums;
@@ -250,9 +277,9 @@ nav > div a.nav-item.nav-link.active:after {
 
 /* --- Badges de estado --- */
 .badge-destacado {
-  background: #fff6e0;
-  color: #9c6f00;
-  border: 1px solid #f0d78c;
+  background: #fdf3e2;
+  color: #8a6212;
+  border: 1px solid #ecd49f;
   font-size: 0.72rem;
   font-weight: 600;
   padding: 0.2rem 0.5rem;
@@ -262,18 +289,18 @@ nav > div a.nav-item.nav-link.active:after {
 .badge-oculto {
   font-size: 0.72rem;
   font-weight: 600;
-  color: #b00020;
-  background: #fdecee;
-  border: 1px solid #f3b9c2;
+  color: var(--admin-brand-dark);
+  background: #fbe7df;
+  border: 1px solid #efbfab;
   border-radius: 5px;
   padding: 0.2rem 0.5rem;
 }
 .badge-visible {
   font-size: 0.72rem;
   font-weight: 600;
-  color: #1e7e34;
-  background: #e8f6ec;
-  border: 1px solid #b7e3c3;
+  color: #1e6b3d;
+  background: #e6f3ea;
+  border: 1px solid #b6dcc3;
   border-radius: 5px;
   padding: 0.2rem 0.5rem;
 }
@@ -287,26 +314,25 @@ nav > div a.nav-item.nav-link.active:after {
 
 /* --- Tarjeta de formulario (nuevo/editar producto) --- */
 .admin-form-card {
-  background: #fff;
+  background: var(--admin-surface);
   border: 1px solid var(--admin-border);
   border-radius: 10px;
   padding: 1.75rem;
-  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.04);
 }
 .admin-form-card label {
   font-weight: 600;
   font-size: 0.85rem;
-  color: #3a4654;
+  color: var(--admin-text);
 }
 
 /* --- Botón flotante nuevo producto --- */
 .btn-admin-primary {
-  background: var(--admin-navy);
-  border-color: var(--admin-navy);
+  background: var(--admin-brand);
+  border-color: var(--admin-brand);
   color: #fff;
 }
 .btn-admin-primary:hover {
-  background: var(--admin-navy-dark);
-  border-color: var(--admin-navy-dark);
+  background: var(--admin-brand-dark);
+  border-color: var(--admin-brand-dark);
   color: #fff;
 }

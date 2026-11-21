@@ -11,31 +11,44 @@
  */
 
 :root {
-  /* Superficies: fondo crema suave en vez de gris-azulado, más "mantel". */
-  --bg: #f7f4ef;
-  --bg-hundido: #efeae2;
-  --surface: #ffffff;
-  --border: #e8e1d6;
-  --border-fuerte: #d9cfbf;
-  --text: #1d1b2a;
-  --text-muted: #6d6878;
+  /* Superficies: fondo crema cálido, como papel de carta. */
+  --bg: #f6f1e7;
+  --bg-hundido: #ece3d2;
+  --surface: #fffdf9;
+  --border: #e3d9c6;
+  --border-fuerte: #d2c3a3;
+  --text: #241c14;
+  --text-muted: #7a6c56;
 
-  /* Marca (igual que el diseño original). */
-  --brand: #e22104;
-  --brand-dark: #b81a02;
-  --brand-suave: #fdebe6;
-  --navy: #0a0252;
-  --navy-soft: #2f2d4e;
-  --dorado: #c8902e;
+  /* Marca: un solo rojo con autoridad (no "terracota de IA") y un navy
+     profundo como contraste; el dorado queda SOLO para un acento puntual
+     (destacados), nunca como color estructural. */
+  --brand: #c62a12;
+  --brand-dark: #8f1d0b;
+  --brand-suave: #fbe7df;
+  --navy: #1c1033;
+  --navy-soft: #38284f;
+  --dorado: #b9872c;
 
   --fuente-titulo: "Fraunces Variable", "Fraunces", Georgia, "Times New Roman", serif;
   --fuente-texto: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 
-  --radius: 14px;
-  --radius-grande: 20px;
-  --sombra: 0 1px 2px rgba(29, 27, 42, 0.04), 0 2px 8px rgba(29, 27, 42, 0.04);
-  --sombra-hover: 0 18px 40px -12px rgba(10, 2, 82, 0.22);
-  --degrade-marca: linear-gradient(135deg, var(--navy) 0%, var(--navy-soft) 60%, #6b1d3a 100%);
+  /* Escala de espaciado: antes cada bloque definía su propio padding/gap
+     "a ojo"; con esta escala, el espaciado de toda la SPA respira igual. */
+  --esp-1: 4px;
+  --esp-2: 8px;
+  --esp-3: 12px;
+  --esp-4: 16px;
+  --esp-5: 24px;
+  --esp-6: 32px;
+  --esp-7: 48px;
+  --esp-8: 64px;
+
+  --radius: 12px;
+  --radius-grande: 18px;
+  --sombra: 0 1px 2px rgba(36, 28, 20, 0.05), 0 2px 6px rgba(36, 28, 20, 0.04);
+  --sombra-hover: 0 20px 44px -16px rgba(28, 16, 51, 0.28);
+  --degrade-marca: linear-gradient(120deg, var(--navy) 0%, var(--navy-soft) 55%, #5c2034 100%);
   --transicion: 0.22s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
@@ -126,90 +139,85 @@ a {
 }
 
 /* ------------------------------------------------------------ Hero (inicio) */
+/* La línea perforada al pie del hero imita el taco de una comanda de
+   cocina — un detalle propio del rubro en vez de un corte recto genérico. */
 .hero-publico {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   background: var(--degrade-marca);
   color: #fff;
-  padding: 88px 0 80px;
-  border-radius: 0 0 36px 36px;
-  margin-bottom: 40px;
+  padding: 64px 0 56px;
+  margin-bottom: var(--esp-7);
 }
 
-/* Textura de puntos sutil sobre el degradé. */
 .hero-publico::before {
   content: "";
   position: absolute;
-  inset: 0;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px);
-  background-size: 18px 18px;
-  pointer-events: none;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background-image: repeating-linear-gradient(to right, rgba(255, 255, 255, 0.4) 0 10px, transparent 10px 20px);
 }
 
 .hero-publico::after {
   content: "";
   position: absolute;
-  width: 420px;
-  height: 420px;
-  right: -120px;
-  top: -160px;
+  width: 360px;
+  height: 360px;
+  right: -90px;
+  top: -140px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(226, 33, 4, 0.45), transparent 65%);
+  background: radial-gradient(circle, rgba(198, 42, 18, 0.5), transparent 65%);
   pointer-events: none;
 }
 
 .hero-publico .contenedor {
   position: relative;
   z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--esp-6);
 }
 
-.hero-publico__icono {
-  width: 72px;
-  height: 72px;
-  margin: 0 auto 22px;
-  border-radius: 20px;
+.hero-publico__cifras {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 32px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  backdrop-filter: blur(6px);
+  gap: var(--esp-5);
+  padding-bottom: 4px;
 }
 
-.hero-publico__etiqueta {
-  display: inline-block;
+.hero-publico__cifra {
+  text-align: right;
+}
+
+.hero-publico__cifra strong {
+  display: block;
+  font-family: var(--fuente-titulo);
+  font-size: 30px;
+  line-height: 1;
+  color: #ffb6a6;
+}
+
+.hero-publico__cifra span {
   font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.8);
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  padding: 6px 14px;
-  border-radius: 999px;
-  margin-bottom: 18px;
+  color: rgba(255, 255, 255, 0.68);
 }
 
 body .hero-publico h1 {
   color: #fff;
-  font-size: clamp(32px, 5vw, 54px);
+  font-size: clamp(32px, 4.6vw, 50px);
   font-weight: 600;
   margin: 0 0 14px;
-  line-height: 1.08;
-}
-
-.hero-publico h1 em {
-  font-style: italic;
-  font-weight: 500;
-  color: #ffb6a6;
+  line-height: 1.1;
+  max-width: 11ch;
 }
 
 .hero-publico p {
   font-size: 16px;
   color: rgba(255, 255, 255, 0.82);
-  max-width: 520px;
-  margin: 0;
+  max-width: 440px;
+  margin: 0 0 var(--esp-5);
 }
 
 .pasos {
@@ -647,43 +655,92 @@ body .precio {
   color: inherit;
 }
 
-.tarjeta--restaurante .fila-info {
-  color: var(--brand);
-  font-weight: 600;
+.tarjeta--restaurante .fila-info--sutil {
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Primer resultado de la grilla: ocupa dos columnas y muestra la foto en
+   formato apaisado, a modo de "plato del día" editorial — rompe la
+   monotonía de tarjetas idénticas sin inventar una jerarquía que no existe
+   (siempre es el primer resultado real de la búsqueda). */
+.tarjeta--restaurante-destacada {
+  grid-column: span 2;
+}
+
+.tarjeta--restaurante-destacada .tarjeta__foto-wrap {
+  aspect-ratio: 21 / 9;
+}
+
+.tarjeta--restaurante-destacada .tarjeta__titulo-fila h3 {
+  font-size: 24px;
+}
+
+@media (max-width: 640px) {
+  .tarjeta--restaurante-destacada {
+    grid-column: span 1;
+  }
+  .tarjeta--restaurante-destacada .tarjeta__foto-wrap {
+    aspect-ratio: 4 / 3;
+  }
 }
 
 /* ------------------------------------------------------------ Buscador (inicio) */
 .buscador-inicio {
   position: relative;
-  max-width: 420px;
-  margin: 0 auto 28px;
+  max-width: 360px;
 }
 
 .buscador-inicio i {
   position: absolute;
-  left: 14px;
+  left: 16px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-muted);
-  font-size: 15px;
+  font-size: 14px;
   pointer-events: none;
 }
 
 .buscador-inicio input {
   width: 100%;
   height: 46px;
-  padding: 0 16px 0 38px;
-  border: 1px solid var(--border);
+  padding: 0 16px 0 40px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 999px;
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.95);
   font-size: 14px;
-  box-shadow: var(--sombra);
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.35);
   transition: border-color var(--transicion);
 }
 
 .buscador-inicio input:focus {
   outline: none;
-  border-color: var(--navy-soft);
+  border-color: var(--brand);
+}
+
+.buscador-inicio--clara i {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.buscador-inicio--clara input {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+.buscador-inicio--clara input::placeholder {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.buscador-inicio--clara input:focus {
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--text);
+}
+
+.buscador-inicio--clara input:focus::placeholder {
+  color: var(--text-muted);
 }
 
 /* ------------------------------------------------------------ Tabs de carta */
@@ -776,16 +833,6 @@ body .precio {
 
 .portada-restaurante__datos {
   animation: aparecer 0.5s both;
-}
-
-.portada-restaurante__etiqueta {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.75);
-  margin-bottom: 6px;
 }
 
 body .portada-restaurante__datos h1 {

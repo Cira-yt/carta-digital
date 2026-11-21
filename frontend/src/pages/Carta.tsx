@@ -217,7 +217,6 @@ export function Carta(): JSX.Element {
         <div className="contenedor portada-restaurante__fila">
           <img className="portada-restaurante__foto" src={fotoRestaurante ?? "/img/logo_empresa_comodin.png"} alt="" />
           <div className="portada-restaurante__datos">
-            <span className="portada-restaurante__etiqueta">Nuestra carta</span>
             <h1>{restaurante.nombre}</h1>
             <div className="portada-restaurante__filas">
               <span className="fila-info">
