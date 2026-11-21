@@ -1,1 +1,1 @@
-res.send("<div>Hola " + req.query.nombre + "</div>");
+<script>alert('XSS detectado')</script>
