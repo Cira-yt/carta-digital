@@ -122,10 +122,19 @@ Ver el `Jenkinsfile` en la raíz del repo. Resumen:
    hicimos a mano al auditar el historial de git).
 5. `npm audit --omit=dev --audit-level=high` sobre las dependencias de
    producción.
-6. Manda un email con el resultado, los archivos modificados y el link al
+6. `semgrep scan --config p/owasp-top-ten` sobre el código del PR: análisis
+   estático (SAST) que busca patrones de riesgo de las categorías del
+   [OWASP Top 10](https://owasp.org/www-project-top-ten/) que se pueden
+   detectar leyendo el código (inyección, configuración insegura,
+   criptografía débil, etc.). No sustituye una revisión completa del Top
+   10 (hay categorías, como el control de acceso roto, que dependen del
+   contexto de la app y no se detectan solo leyendo el código línea por
+   línea — esas las cubren los tests de `npm test`), pero sí automatiza la
+   parte que un escáner de este tipo puede cubrir.
+7. Manda un email con el resultado, los archivos modificados y el link al
    log completo — tanto si el build es de un PR (antes del merge) como si
    es de `main` (justo después de que alguien mergeó).
 
-Si cualquiera de los pasos 2-5 falla, el pipeline termina en rojo, el check
+Si cualquiera de los pasos 2-6 falla, el pipeline termina en rojo, el check
 del PR queda en rojo, y GitHub bloquea el botón de "Merge" aunque ya haya
 una aprobación.
