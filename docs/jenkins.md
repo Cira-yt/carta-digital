@@ -46,10 +46,34 @@ por SSH/EC2 Instance Connect.
 > solo está pensado para cuando termines de verdad con el proyecto.
 >
 > La instancia usa una **IP elástica** (no la IP pública dinámica que AWS
-> asigna por defecto): si el Lab de AWS Academy se corta y la instancia se
-> reinicia, la URL de Jenkins **no cambia**. La IP elástica sobrevive incluso
-> a un `destruir` (se reutiliza en el próximo `jenkins`/`todo`); para
-> liberarla del todo usá `desplegar-jenkins.sh liberar-ip`.
+> asigna por defecto): aunque se detenga y se vuelva a arrancar, la URL de
+> Jenkins **no cambia**. La IP elástica sobrevive incluso a un `destruir`
+> (se reutiliza en el próximo `jenkins`/`todo`); para liberarla del todo usá
+> `desplegar-jenkins.sh liberar-ip`.
+
+### Si Jenkins deja de responder: el Lab de AWS Academy detiene la instancia
+
+Cuando se acaba el tiempo de la sesión del **Lab de AWS Academy** (o la
+cerrás vos manualmente), AWS detiene automáticamente **todas** las
+instancias EC2 de la cuenta, Jenkins incluida — queda en estado `stopped`,
+no se borra nada. Esto es distinto a lo que pasa con la app: las instancias
+de la app viven en un Auto Scaling Group y se vuelven a levantar solas; la
+de Jenkins es una **instancia independiente**, así que nadie la reinicia
+por vos. El resultado, en la práctica: cada vez que vuelvas a abrir el Lab
+vas a tener que arrancarla a mano. Esto **no tiene relación con credenciales
+vencidas de AWS CLI ni con espacio en disco** — es simplemente que la
+instancia está apagada.
+
+Para confirmar y arreglarlo:
+
+```bash
+bash scripts/jenkins/desplegar-jenkins.sh estado    # confirma que diga "stopped"
+bash scripts/jenkins/desplegar-jenkins.sh iniciar   # la arranca y muestra la URL
+```
+
+`iniciar` es seguro de correr aunque Jenkins ya esté `running` (en ese caso
+no hace nada, solo te avisa). Como usa la IP elástica, la URL sigue siendo
+la misma de siempre.
 
 ## 2. Primer login y plugins
 
