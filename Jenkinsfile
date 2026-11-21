@@ -117,7 +117,17 @@ pipeline {
           if [ -n "${NVD_API_KEY:-}" ]; then
             NVD_ARGS="--nvdApiKey $NVD_API_KEY"
           fi
+          # IMPORTANTE: por defecto, el contenedor de Dependency-Check NO usa
+          # toda la RAM que la instancia tenga libre — la JVM, sin -Xmx
+          # explicito, solo toma una fraccion (ergonomia por defecto, ~25%
+          # de lo que ve el contenedor). Eso causaba un OutOfMemoryError al
+          # construir la base completa de CVEs la primera vez (430 mil+
+          # registros), incluso en una instancia con mas memoria. Se puede
+          # ajustar sin tocar el Jenkinsfile con la misma variable global de
+          # Jenkins que NVD_API_KEY (Manage Jenkins -> System -> Global
+          # properties -> Environment variables -> DEPENDENCY_CHECK_JAVA_OPTS).
           docker run --rm \
+            -e JAVA_OPTS="${DEPENDENCY_CHECK_JAVA_OPTS:--Xmx4g}" \
             -v "$WORKSPACE:/src" \
             -v dependency-check-data:/usr/share/dependency-check/data \
             owasp/dependency-check:latest \
