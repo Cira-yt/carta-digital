@@ -244,6 +244,21 @@ alb_dns() {
     --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null | limpio || true
 }
 
+# URL que la gente de verdad puede abrir en el navegador. El ALB solo acepta
+# tráfico 80/443 desde los rangos de IP de Cloudflare (ver "red"), así que su
+# DNS crudo no sirve para entrar directo: hay que pasar por el dominio propio
+# o por el Worker *.workers.dev. Si ninguno está configurado todavía, se
+# avisa explícitamente en vez de imprimir una URL que va a dar error.
+url_publica() {
+  if [ -n "${DOMINIO:-}" ]; then
+    echo "https://${DOMINIO}"
+  elif [ -n "${CF_SUBDOMAIN:-}" ]; then
+    echo "https://${CF_WORKER_NAME}.${CF_SUBDOMAIN}.workers.dev"
+  else
+    echo ""
+  fi
+}
+
 tg_arn() {
   aws elbv2 describe-target-groups --names "$TG_NAME" \
     --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null | limpio || true
@@ -677,7 +692,14 @@ JSON
   done
   echo
   if [ "$sanas" -ge 1 ] 2>/dev/null; then
-    ok "$sanas instancia(s) sana(s). App disponible en: http://$(alb_dns)"
+    ok "$sanas instancia(s) sana(s)."
+    local url; url=$(url_publica)
+    if [ -n "$url" ]; then
+      ok "App disponible en: $url"
+    else
+      echo "  ALB (interno, solo accesible vía Cloudflare): http://$(alb_dns)"
+      aviso "Todavía no configuraste Cloudflare (DOMINIO o CF_SUBDOMAIN en deploy.env): corré 'desplegar.sh cloudflare' para tener una URL pública."
+    fi
   else
     aviso "Todavía no hay instancias sanas. Revisá el log de arranque en una instancia:"
     aviso "  sudo tail -f /var/log/carta-digital-userdata.log   (o 'desplegar.sh estado' en unos minutos)"
@@ -820,7 +842,12 @@ cmd_estado() {
   if [ -n "$tg" ]; then
     aws elbv2 describe-target-health --target-group-arn "$tg" \
       --query 'TargetHealthDescriptions[].{Instancia:Target.Id,Estado:TargetHealth.State,Motivo:TargetHealth.Reason}' --output table
-    echo "  URL: http://$(alb_dns)"
+    local url; url=$(url_publica)
+    if [ -n "$url" ]; then
+      echo "  URL pública: $url"
+    else
+      echo "  ALB (interno, solo accesible vía Cloudflare): http://$(alb_dns)"
+    fi
   else aviso "No existe"; fi
   paso "Bucket S3 de fotos"
   resolver_bucket_fotos
