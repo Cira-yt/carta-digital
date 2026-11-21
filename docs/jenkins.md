@@ -198,6 +198,32 @@ Ver el `Jenkinsfile` en la raíz del repo. Resumen:
    A propósito es una variable de entorno global y no un "credential" de
    Jenkins — así, aunque falte, nunca rompe el pipeline entero (solo deja
    esta etapa sin datos útiles, nunca bloquea el merge).
+
+   **La primera corrida real necesita bastante memoria.** La primera vez
+   que esta etapa corre (o si se borra el volumen `dependency-check-data`),
+   tiene que descargar y procesar la base completa de la NVD — más de
+   430.000 CVEs — y eso puede fallar con `OutOfMemoryError: Java heap
+   space` en una instancia chica (`t3.small`, 2 GB de RAM), incluso
+   subiendo el tamaño de la instancia, porque Java por defecto no usa toda
+   la memoria disponible si no se le indica explícitamente. Por eso el
+   `Jenkinsfile` le pasa `-e JAVA_OPTS="-Xmx4g"` al contenedor (ajustable
+   sin tocar el código: variable de entorno global
+   `DEPENDENCY_CHECK_JAVA_OPTS` en Jenkins, igual que `NVD_API_KEY`).
+
+   Para que esta primera sincronización no falle, conviene agrandar
+   temporalmente la instancia (por ejemplo a `t3.large`, 8 GB) solo para
+   esa corrida:
+   ```bash
+   aws ec2 stop-instances --instance-ids <ID>
+   aws ec2 wait instance-stopped --instance-ids <ID>
+   aws ec2 modify-instance-attribute --instance-id <ID> --instance-type t3.large
+   aws ec2 start-instances --instance-ids <ID>
+   aws ec2 wait instance-running --instance-ids <ID>
+   ```
+   Una vez que la base de CVEs ya está descargada (queda guardada en el
+   volumen `dependency-check-data`, sobrevive a reinicios), las próximas
+   corridas son incrementales y mucho más livianas — ahí se puede volver a
+   `t3.small` si se quiere.
 8. Manda un email con el resultado, los archivos modificados y el link al
    log completo (y el reporte de Dependency-Check adjunto en HTML) — tanto
    si el build es de un PR (antes del merge) como si es de `main` (justo
