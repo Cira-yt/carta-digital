@@ -120,7 +120,7 @@
         icon: "error",
         title: "Datos inválidos",
         text: errores[error],
-        confirmButtonColor: "#0b2e4f",
+        confirmButtonColor: "#c62a12",
       });
     }
   });

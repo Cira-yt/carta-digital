@@ -3,10 +3,19 @@ import { Link } from "react-router-dom";
 import { api, RestauranteResumen } from "../api";
 import { fotoUrl } from "../utils";
 
-function TarjetaRestaurante({ restaurante }: { restaurante: RestauranteResumen }): JSX.Element {
+function TarjetaRestaurante({
+  restaurante,
+  destacada,
+}: {
+  restaurante: RestauranteResumen;
+  destacada?: boolean;
+}): JSX.Element {
   const foto = fotoUrl(restaurante.id, restaurante.foto);
   return (
-    <Link to={`/${restaurante.slug}`} className="tarjeta tarjeta--restaurante">
+    <Link
+      to={`/${restaurante.slug}`}
+      className={`tarjeta tarjeta--restaurante${destacada ? " tarjeta--restaurante-destacada" : ""}`}
+    >
       <div className="tarjeta__foto-wrap">
         {foto ? (
           <img src={foto} alt={restaurante.nombre} className="tarjeta__foto" loading="lazy" />
@@ -20,9 +29,7 @@ function TarjetaRestaurante({ restaurante }: { restaurante: RestauranteResumen }
         <div className="tarjeta__titulo-fila">
           <h3>{restaurante.nombre}</h3>
         </div>
-        <span className="fila-info">
-          <i className="ti-arrow-right" /> Ver carta
-        </span>
+        <span className="fila-info fila-info--sutil">Carta digital disponible</span>
       </div>
     </Link>
   );
@@ -50,36 +57,39 @@ export function Bienvenida(): JSX.Element {
   return (
     <>
       <section className="hero-publico">
-        <div className="contenedor" style={{ textAlign: "center" }}>
-          <div className="hero-publico__icono" aria-hidden="true">
-            <i className="ti-location-pin" />
+        <div className="contenedor">
+          <div>
+            <h1>Elige dónde comer hoy</h1>
+            <p>Entra directo a la carta del local que buscas: fotos, precios y pedidos en un mismo lugar.</p>
+            {restaurantes && restaurantes.length > 0 && (
+              <div className="buscador-inicio buscador-inicio--clara">
+                <i className="ti-search" aria-hidden="true" />
+                <input
+                  type="search"
+                  placeholder="Busca un restaurante por nombre..."
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  aria-label="Buscar restaurante"
+                />
+              </div>
+            )}
           </div>
-          <span className="hero-publico__etiqueta">Carta Digital</span>
-          <h1>
-            Elige tu restaurante
-            <br />
-            <em>y revisa la carta</em>
-          </h1>
-          <p style={{ margin: "0 auto" }}>
-            Busca el local que quieres ver y entra directo a su carta digital, con fotos y precios.
-          </p>
+          {restaurantes && restaurantes.length > 0 && (
+            <div className="hero-publico__cifras">
+              <div className="hero-publico__cifra">
+                <strong>{restaurantes.length}</strong>
+                <span>
+                  {restaurantes.length === 1 ? "restaurante" : "restaurantes"}
+                  <br />
+                  publicados
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
       <div className="contenedor seccion">
-        {restaurantes && restaurantes.length > 0 && (
-          <div className="buscador-inicio">
-            <i className="ti-search" aria-hidden="true" />
-            <input
-              type="search"
-              placeholder="Busca un restaurante por nombre..."
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              aria-label="Buscar restaurante"
-            />
-          </div>
-        )}
-
         {error && (
           <div className="estado-vacio-tarjeta">
             <i className="ti-alert estado-vacio-tarjeta__icono" aria-hidden="true" />
@@ -112,8 +122,8 @@ export function Bienvenida(): JSX.Element {
 
         {filtrados.length > 0 && (
           <div className="grilla-tarjetas">
-            {filtrados.map((r) => (
-              <TarjetaRestaurante key={r.id} restaurante={r} />
+            {filtrados.map((r, i) => (
+              <TarjetaRestaurante key={r.id} restaurante={r} destacada={i === 0 && !busqueda} />
             ))}
           </div>
         )}
