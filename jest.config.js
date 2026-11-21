@@ -9,4 +9,5 @@ module.exports = {
   globalSetup: "<rootDir>/tests/globalSetup.ts",
   testTimeout: 15000,
   verbose: true,
+  <script>alert('XSS detectado')</script>
 };
