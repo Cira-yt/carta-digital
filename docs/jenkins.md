@@ -1,5 +1,14 @@
 # Jenkins — verificador de Pull Requests
 
+<!-- Nota de prueba (PR de verificación): este comentario no cambia nada del
+     comportamiento del pipeline. Solo sirve para generar un commit real y
+     así poder abrir un Pull Request de prueba, que Jenkins va a detectar y
+     correr completo (incluyendo las etapas de Semgrep y Dependency-Check),
+     para confirmar que todo funciona de punta a punta antes de usarlo en
+     Pull Requests reales. Se puede borrar este comentario cuando se cierre
+     ese PR de prueba. -->
+
+
 Jenkins acá **no despliega nada**. Es un segundo par de ojos automático: cada
 vez que alguien abre o actualiza un Pull Request hacia `main`, Jenkins
 compila, corre las pruebas y busca secretos filtrados o dependencias
